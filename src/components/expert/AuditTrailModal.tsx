@@ -22,7 +22,7 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({
               <h3 className="font-heading text-base font-bold text-white">
                 Piste d'Audit Inaltérable (SYSCOHADA)
               </h3>
-              <p className="text-[10px] text-[#C4B5FD] font-mono">
+              <p className="text-[11px] text-[#C4B5FD] font-mono">
                 Pièce {entry.pieceRef} • Traçabilité horodatée conforme OHADA
               </p>
             </div>
@@ -42,12 +42,12 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({
                 {entry.amount.toLocaleString('fr-FR')} FCFA
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px] font-mono text-[#534674] pt-1.5 border-t border-[#DDD6FE]">
+            <div className="flex items-center justify-between text-[12px] font-mono text-[#534674] pt-1.5 border-t border-[#DDD6FE]">
               <span>Débit : {entry.debitAccount}</span>
               <span>Crédit : {entry.creditAccount}</span>
             </div>
             {entry.rawInput && (
-              <p className="text-[10px] text-[#7C709A] italic">
+              <p className="text-[11px] text-[#7C709A] italic">
                 Source originale : "{entry.rawInput}" ({entry.inputType})
               </p>
             )}
@@ -85,10 +85,10 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({
                     {/* Step Card */}
                     <div className="bg-white border border-[#DDD6FE] p-3.5 rounded-xl shadow-2xs text-xs space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className={`px-2 py-0.5 text-[9.5px] font-bold uppercase rounded-full ${badgeClass}`}>
+                        <span className={`px-2 py-0.5 text-[10.5px] font-bold uppercase rounded-full ${badgeClass}`}>
                           {item.action.replace(/_/g, ' ')}
                         </span>
-                        <span className="font-mono text-[10px] text-[#7C709A]">
+                        <span className="font-mono text-[11px] text-[#7C709A]">
                           {new Date(item.timestamp).toLocaleString('fr-FR')}
                         </span>
                       </div>
@@ -96,14 +96,14 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({
                       <div className="font-semibold text-[#1E084A] flex items-center gap-1.5 pt-0.5">
                         <span>Auteur : {item.author}</span>
                         {item.confidenceScore && (
-                          <span className="text-[10px] font-mono text-[#7C709A]">
+                          <span className="text-[11px] font-mono text-[#7C709A]">
                             (Confiance IA : {item.confidenceScore}%)
                           </span>
                         )}
                       </div>
 
                       {item.notes && (
-                        <p className="text-[11px] text-[#534674] pt-0.5">
+                        <p className="text-[12px] text-[#534674] pt-0.5">
                           {item.notes}
                         </p>
                       )}

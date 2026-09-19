@@ -130,7 +130,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             <div className="relative p-2 rounded-xl bg-[#7024E3]/10 dark:bg-[#7024E3]/25 text-[#7024E3] dark:text-[#C4B5FD]">
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#E11D48] text-white text-[10px] font-black rounded-full flex items-center justify-center font-mono animate-pulse">
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#E11D48] text-white text-[11px] font-black rounded-full flex items-center justify-center font-mono animate-pulse">
                   {unreadCount}
                 </span>
               )}
@@ -141,16 +141,16 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                   Centre de Notifications
                 </h3>
                 {unreadCount > 0 ? (
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#E11D48]/15 text-[#E11D48] dark:text-[#FDA4AF]">
+                  <span className="text-[11px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#E11D48]/15 text-[#E11D48] dark:text-[#FDA4AF]">
                     {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
                   </span>
                 ) : (
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399]">
+                  <span className="text-[11px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399]">
                     À jour
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-[#7C709A] dark:text-[#A594C9] mt-0.5">
+              <p className="text-[12px] text-[#7C709A] dark:text-[#A594C9] mt-0.5">
                 Alertes SYSCOHADA, échéances fiscales et flux de trésorerie
               </p>
             </div>
@@ -233,7 +233,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                       {currentSound === opt.id && <span className="w-1.5 h-1.5 rounded-full bg-[#7024E3] dark:bg-[#A78BFA]" />}
                       <span>{opt.label}</span>
                     </div>
-                    <p className="text-[10px] text-[#7C709A] dark:text-[#A594C9] leading-tight">
+                    <p className="text-[11px] text-[#7C709A] dark:text-[#A594C9] leading-tight">
                       {opt.description}
                     </p>
                   </div>
@@ -253,7 +253,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
 
             {/* Volume Slider */}
             <div className="flex items-center gap-3 pt-1">
-              <span className="text-[11px] font-bold text-[#534674] dark:text-[#A594C9] whitespace-nowrap">
+              <span className="text-[12px] font-bold text-[#534674] dark:text-[#A594C9] whitespace-nowrap">
                 Volume ({Math.round(volume * 100)}%) :
               </span>
               <input
@@ -319,7 +319,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             {unreadCount > 0 && (
               <button
                 onClick={onMarkAllAsRead}
-                className="text-[11px] font-bold text-[#7024E3] dark:text-[#C4B5FD] hover:underline flex items-center gap-1"
+                className="text-[12px] font-bold text-[#7024E3] dark:text-[#C4B5FD] hover:underline flex items-center gap-1"
                 title="Tout marquer comme lu"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
@@ -339,7 +339,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
               <p className="text-xs font-bold text-[#534674] dark:text-[#C4B5FD]">
                 Aucune notification dans cette catégorie
               </p>
-              <p className="text-[11px] text-[#7C709A] dark:text-[#A594C9] mt-1">
+              <p className="text-[12px] text-[#7C709A] dark:text-[#A594C9] mt-1">
                 Toutes vos alertes comptables et fiscales sont traitées
               </p>
             </div>
@@ -381,12 +381,12 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                         )}
                         <span>{notif.title}</span>
                       </h4>
-                      <span className="text-[10px] font-mono text-[#7C709A] dark:text-[#9B88BF] shrink-0">
+                      <span className="text-[11px] font-mono text-[#7C709A] dark:text-[#9B88BF] shrink-0">
                         {notif.timestamp}
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-[#534674] dark:text-[#A594C9] mt-1 leading-relaxed">
+                    <p className="text-[12px] text-[#534674] dark:text-[#A594C9] mt-1 leading-relaxed">
                       {notif.message}
                     </p>
 
@@ -402,7 +402,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                             }
                             onClose();
                           }}
-                          className="text-[11px] font-bold text-[#7024E3] dark:text-[#C4B5FD] hover:text-[#5B18C4] flex items-center gap-1 group/btn"
+                          className="text-[12px] font-bold text-[#7024E3] dark:text-[#C4B5FD] hover:text-[#5B18C4] flex items-center gap-1 group/btn"
                         >
                           <span>{notif.actionLabel}</span>
                           <ArrowRight className="w-3 h-3 transition-transform group-hover/btn:translate-x-0.5" />
@@ -416,7 +416,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                               e.stopPropagation();
                               onMarkAsRead(notif.id);
                             }}
-                            className="p-1 rounded hover:bg-[#EDE9FE] dark:hover:bg-[#2D1A54] text-[10px] text-[#7024E3] dark:text-[#C4B5FD] font-bold"
+                            className="p-1 rounded hover:bg-[#EDE9FE] dark:hover:bg-[#2D1A54] text-[11px] text-[#7024E3] dark:text-[#C4B5FD] font-bold"
                             title="Marquer comme lu"
                           >
                             Lu
@@ -444,7 +444,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
         {/* Footer with Demo Test & Sound indicator */}
         <div className="p-3 sm:p-4 bg-[#FAF8FF] dark:bg-[#1A0E34] border-t border-[#EDE9FE] dark:border-[#2D1A54] flex flex-wrap items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#7C709A] dark:text-[#A594C9] flex items-center gap-1.5">
+            <span className="text-[12px] text-[#7C709A] dark:text-[#A594C9] flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${soundEnabled ? 'bg-[#10B981]' : 'bg-gray-400'}`} />
               <span>
                 Son : <strong>{soundEnabled ? SOUND_OPTIONS.find(o => o.id === currentSound)?.label : 'Désactivé'}</strong>
@@ -466,7 +466,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             {onAddSimulatedNotification && (
               <button
                 onClick={onAddSimulatedNotification}
-                className="px-2.5 py-1 bg-white dark:bg-[#2A164F] border border-[#DDD6FE] dark:border-[#3D216D] hover:border-[#7024E3] text-[#7024E3] dark:text-[#C4B5FD] text-[11px] font-bold rounded-lg transition-all shadow-2xs hover:shadow-xs flex items-center gap-1.5"
+                className="px-2.5 py-1 bg-white dark:bg-[#2A164F] border border-[#DDD6FE] dark:border-[#3D216D] hover:border-[#7024E3] text-[#7024E3] dark:text-[#C4B5FD] text-[12px] font-bold rounded-lg transition-all shadow-2xs hover:shadow-xs flex items-center gap-1.5"
                 title="Générer une notification de test avec le son par défaut"
               >
                 <Sparkles className="w-3 h-3" />
@@ -477,7 +477,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             {notifications.length > 0 && (
               <button
                 onClick={onClearAll}
-                className="text-[11px] text-gray-400 hover:text-[#EF4444] transition-colors p-1"
+                className="text-[12px] text-gray-400 hover:text-[#EF4444] transition-colors p-1"
                 title="Effacer toutes les notifications"
               >
                 Effacer tout

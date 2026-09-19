@@ -445,7 +445,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 <h3 className="font-heading text-lg font-bold text-white">
                   Importation de Fichiers Excel & Tableurs
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30">
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30">
                   .xlsx, .xls, .csv
                 </span>
               </div>
@@ -583,7 +583,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </span>
                       <ArrowRight className="w-4 h-4 text-[#7024E3] opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       6 écritures avec N° de pièces, comptes 6011, 7011, TVA et caisse.
                     </p>
                   </button>
@@ -598,7 +598,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </span>
                       <ArrowRight className="w-4 h-4 text-[#7024E3] opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Transactions brutes avec détection automatique des comptes OHADA par l'IA.
                     </p>
                   </button>
@@ -609,21 +609,21 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               <div className="bg-[#FAF8FF] border border-[#DDD6FE] p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                 <div>
                   <span className="font-bold text-[#1E084A] block">Modèles Excel téléchargeables :</span>
-                  <p className="text-[11px] text-[#7C709A]">
+                  <p className="text-[12px] text-[#7C709A]">
                     Fournissez ces trames à vos clients entrepreneurs pour standardiser la collecte.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleDownloadTemplate('journal_syscohada')}
-                    className="px-3 py-1.5 bg-white hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#1E084A] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs text-[11px]"
+                    className="px-3 py-1.5 bg-white hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#1E084A] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs text-[12px]"
                   >
                     <Download className="w-3.5 h-3.5 text-[#7024E3]" />
                     <span>Modèle Journal (.xlsx)</span>
                   </button>
                   <button
                     onClick={() => handleDownloadTemplate('releve_bancaire_mobile')}
-                    className="px-3 py-1.5 bg-white hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#1E084A] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs text-[11px]"
+                    className="px-3 py-1.5 bg-white hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#1E084A] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs text-[12px]"
                   >
                     <Download className="w-3.5 h-3.5 text-[#10B981]" />
                     <span>Modèle Relevé (.xlsx)</span>
@@ -660,7 +660,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     <h4 className="font-heading text-sm font-bold text-[#1E084A]">
                       Correspondance des Colonnes Détectées
                     </h4>
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Vérifiez les liaisons entre les colonnes de votre fichier et les champs comptables SYSCOHADA.
                     </p>
                   </div>
@@ -847,7 +847,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               <div className="bg-white border border-[#DDD6FE] rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto max-h-[50vh]">
                   <table className="w-full text-left text-xs border-collapse font-sans">
-                    <thead className="sticky top-0 bg-[#1E084A] text-white z-10 font-mono text-[10px] uppercase">
+                    <thead className="sticky top-0 bg-[#1E084A] text-white z-10 font-mono text-[11px] uppercase">
                       <tr>
                         <th className="p-3 w-10 text-center">
                           <input
@@ -892,7 +892,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                           <td className="p-3 font-medium text-[#1E084A]">
                             <div>{row.label}</div>
                             {row.anomaly && (
-                              <span className="text-[10px] text-[#DC2626] font-bold flex items-center gap-1 mt-0.5">
+                              <span className="text-[11px] text-[#DC2626] font-bold flex items-center gap-1 mt-0.5">
                                 <AlertTriangle className="w-3 h-3 shrink-0" />
                                 {row.anomaly}
                               </span>
@@ -904,7 +904,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             <select
                               value={row.debitAccountCode}
                               onChange={(e) => updateRowAccount(row.id, 'debit', e.target.value)}
-                              className="w-full bg-[#FAF8FF] border border-[#DDD6FE] text-[#1E084A] font-bold text-[11px] rounded-lg p-1.5 focus:bg-white"
+                              className="w-full bg-[#FAF8FF] border border-[#DDD6FE] text-[#1E084A] font-bold text-[12px] rounded-lg p-1.5 focus:bg-white"
                             >
                               {SYSCOHADA_ACCOUNTS.map(a => (
                                 <option key={a.code} value={a.code}>
@@ -919,7 +919,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             <select
                               value={row.creditAccountCode}
                               onChange={(e) => updateRowAccount(row.id, 'credit', e.target.value)}
-                              className="w-full bg-[#FAF8FF] border border-[#DDD6FE] text-[#1E084A] font-bold text-[11px] rounded-lg p-1.5 focus:bg-white"
+                              className="w-full bg-[#FAF8FF] border border-[#DDD6FE] text-[#1E084A] font-bold text-[12px] rounded-lg p-1.5 focus:bg-white"
                             >
                               {SYSCOHADA_ACCOUNTS.map(a => (
                                 <option key={a.code} value={a.code}>
@@ -934,7 +934,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                           </td>
 
                           <td className="p-3 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
                               row.confidenceScore >= 90 
                                 ? 'bg-[#D1FAE5] text-[#065F46]' 
                                 : 'bg-[#FEF3C7] text-[#92400E]'
@@ -974,7 +974,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   </label>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-[#166534] font-bold text-[11px]">
+                <div className="flex items-center gap-1.5 text-[#166534] font-bold text-[12px]">
                   <CheckCircle2 className="w-4 h-4 text-[#16A34A]" />
                   <span>Partie double garantie pour chaque ligne</span>
                 </div>

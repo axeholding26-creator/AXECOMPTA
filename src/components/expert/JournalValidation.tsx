@@ -13,7 +13,8 @@ import {
   Search, 
   X,
   Check,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Sparkles
 } from 'lucide-react';
 
 interface JournalValidationProps {
@@ -45,6 +46,33 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
   const [editAmount, setEditAmount] = useState<number>(0);
 
   const dossierEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
+
+  // Assistant IA du cabinet : résumé du dossier et suggestion de validation en lot
+  const [aiSummary, setAiSummary] = useState<{ summary: string; points: string[] } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const reliableIds = dossierEntries
+    .filter(e => e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= activeDossier.confidenceThreshold)
+    .map(e => e.id);
+
+  const loadAiSummary = async () => {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/agent/dossier-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dossierId: activeDossier.id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Résumé indisponible');
+      setAiSummary({ summary: data.summary, points: data.points ?? [] });
+    } catch (e: any) {
+      setAiError(e?.message || 'Résumé indisponible');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Filter entries
   const filteredEntries = dossierEntries.filter(entry => {
@@ -189,6 +217,46 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
         </div>
       </div>
 
+      {/* Assistant IA du cabinet */}
+      <div className="bg-[#F5F3FF] border border-[#DDD6FE] p-4 rounded-xl shadow-2xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-[#1E084A] flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-[#7024E3]" />
+            Assistant IA du cabinet
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={loadAiSummary}
+              disabled={aiLoading}
+              className="px-3 py-1.5 bg-white text-[#1E084A] text-xs font-bold rounded-lg border border-[#DDD6FE] hover:bg-[#EDE9FE] disabled:opacity-50"
+            >
+              {aiLoading ? 'Analyse en cours…' : 'Résumé IA du dossier'}
+            </button>
+            <button
+              onClick={() => reliableIds.length && onBatchValidate(reliableIds)}
+              disabled={reliableIds.length === 0}
+              title={`Écritures en attente, sans anomalie, avec une confiance ≥ ${activeDossier.confidenceThreshold}%`}
+              className="px-3 py-1.5 bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-xs font-bold rounded-lg shadow-2xs disabled:opacity-40"
+            >
+              Valider les écritures fiables ({reliableIds.length})
+            </button>
+          </div>
+        </div>
+        {aiError && <p className="text-xs text-[#B91C1C]">{aiError}</p>}
+        {aiSummary && (
+          <div className="text-xs text-[#534674] space-y-1.5">
+            <p>{aiSummary.summary}</p>
+            {aiSummary.points.length > 0 ? (
+              <ul className="list-disc pl-4 space-y-0.5">
+                {aiSummary.points.map(p => <li key={p}>{p}</li>)}
+              </ul>
+            ) : (
+              <p className="text-[#166534] font-semibold">Aucun point d'attention détecté.</p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Filter and Search Bar */}
       <div className="bg-white border border-[#DDD6FE] p-3.5 rounded-xl shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -256,7 +324,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[10px]">
+              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[11px]">
                 <th className="p-3 text-center w-8">
                   <button onClick={handleSelectAll} className="p-0.5">
                     {selectedIds.length > 0 && selectedIds.length === filteredEntries.length ? (
@@ -300,9 +368,9 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                     </td>
 
                     {/* Date & Ref */}
-                    <td className="p-3 whitespace-nowrap font-mono text-[11px]">
+                    <td className="p-3 whitespace-nowrap font-mono text-[12px]">
                       <div className="font-bold text-[#1E084A]">{entry.date}</div>
-                      <div className="text-[9.5px] text-[#7C709A]">{entry.pieceRef}</div>
+                      <div className="text-[10.5px] text-[#7C709A]">{entry.pieceRef}</div>
                     </td>
 
                     {/* Label */}
@@ -311,7 +379,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                         {entry.label}
                       </div>
                       {entry.detectedAnomaly && (
-                        <div className="text-[10px] text-[#DC2626] bg-[#FEE2E2] p-1.5 rounded-lg mt-1 border border-[#FECACA] flex items-start gap-1">
+                        <div className="text-[11px] text-[#DC2626] bg-[#FEE2E2] p-1.5 rounded-lg mt-1 border border-[#FECACA] flex items-start gap-1">
                           <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-[#DC2626]" />
                           <span>{entry.detectedAnomaly}</span>
                         </div>
@@ -323,7 +391,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                       <span className="font-bold text-[#7024E3] bg-[#F5F3FF] border border-[#DDD6FE] px-1.5 py-0.5 rounded-md">
                         {entry.debitAccountCode}
                       </span>
-                      <span className="text-[10px] text-[#7C709A] block truncate max-w-[140px] mt-0.5">
+                      <span className="text-[11px] text-[#7C709A] block truncate max-w-[140px] mt-0.5">
                         {entry.debitAccount.replace(/^[0-9]+\s*-\s*/, '')}
                       </span>
                     </td>
@@ -333,7 +401,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                       <span className="font-bold text-[#10B981] bg-[#F0FDF4] border border-[#BBF7D0] px-1.5 py-0.5 rounded-md">
                         {entry.creditAccountCode}
                       </span>
-                      <span className="text-[10px] text-[#7C709A] block truncate max-w-[140px] mt-0.5">
+                      <span className="text-[11px] text-[#7C709A] block truncate max-w-[140px] mt-0.5">
                         {entry.creditAccount.replace(/^[0-9]+\s*-\s*/, '')}
                       </span>
                     </td>
@@ -350,7 +418,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
 
                     {/* Confiance IA */}
                     <td className="p-3 text-center font-mono">
-                      <span className={`text-[11px] font-bold ${
+                      <span className={`text-[12px] font-bold ${
                         entry.confidenceScore >= 90 
                           ? 'text-[#10B981]' 
                           : entry.confidenceScore >= 75 
@@ -364,17 +432,17 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                     {/* Statut */}
                     <td className="p-3 text-center whitespace-nowrap">
                       {entry.status === 'validated' && (
-                        <span className="px-2.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0] text-[11px] font-bold rounded-full inline-flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-[#16A34A]" /> Validé
                         </span>
                       )}
                       {entry.status === 'pending_review' && (
-                        <span className="px-2.5 py-0.5 bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 bg-[#FEF3C7] text-[#B45309] border border-[#FDE68A] text-[11px] font-bold rounded-full inline-flex items-center gap-1">
                           <Clock className="w-3 h-3 text-[#D97706]" /> À valider
                         </span>
                       )}
                       {entry.status === 'anomaly' && (
-                        <span className="px-2.5 py-0.5 bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] text-[11px] font-bold rounded-full inline-flex items-center gap-1">
                           <AlertTriangle className="w-3 h-3 text-[#DC2626]" /> Anomalie
                         </span>
                       )}

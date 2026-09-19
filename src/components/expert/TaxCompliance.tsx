@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
 import { Printer, Download, ShieldCheck, QrCode } from 'lucide-react';
+import { computeFlows, computeTva, isoDate } from '../../utils/analytics';
 
 interface TaxComplianceProps {
   entries: JournalEntry[];
@@ -13,41 +14,52 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
 }) => {
   const [taxType, setTaxType] = useState<'tva' | 'dsf'>('tva');
 
-  const validatedEntries = entries.filter(e => e.clientDossierId === activeDossier.id && e.status === 'validated');
+  const [month, setMonth] = useState(isoDate(new Date()).slice(0, 7));
+  const dossierEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
 
-  // Compute TVA Collected (Compte 4431) and TVA Deductible (Compte 4451)
-  let tvaCollectee = 0;
-  let tvaDeductible = 0;
-  let totalSalesHT = 0;
-  let totalPurchasesHT = 0;
+  // TVA calculée sur les écritures validées du mois, avec les montants de TVA réellement enregistrés
+  const tva = computeTva(dossierEntries, month);
+  const { totalSalesHT, tvaCollectee, tvaDeductible } = tva;
+  const netTvaToPay = tva.netToPay;
+  const creditTva = tva.credit;
+  const notValidatedInMonth = dossierEntries.filter(e => e.status !== 'validated' && e.date.startsWith(month)).length;
+  const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
-  validatedEntries.forEach(entry => {
-    if (entry.creditAccountCode.startsWith('701')) {
-      totalSalesHT += entry.amount;
-      tvaCollectee += entry.tvaAmount > 0 ? entry.tvaAmount : Math.round(entry.amount * 0.18);
-    }
-    if (entry.debitAccountCode.startsWith('601') || entry.debitAccountCode.startsWith('605')) {
-      totalPurchasesHT += entry.amount;
-      tvaDeductible += entry.tvaAmount > 0 ? entry.tvaAmount : Math.round(entry.amount * 0.18 * 0.4);
-    }
-  });
+  // DSF : chiffres de l'année civile du mois sélectionné
+  const year = month.slice(0, 4);
+  const yearFlows = computeFlows(dossierEntries.filter(e => e.status === 'validated'), `${year}-01-01`, `${year}-12-31`);
+  const yearPurchases = dossierEntries
+    .filter(e => e.status === 'validated' && e.date.startsWith(year) && /^(60|61|62|63)/.test(e.debitAccountCode))
+    .reduce((sum, e) => sum + (e.amount - (e.tvaAmount || 0)), 0);
+  const grossAddedValue = Math.max(0, yearFlows.revenue - yearPurchases);
 
-  if (totalSalesHT === 0) {
-    totalSalesHT = 3200000;
-    tvaCollectee = Math.round(totalSalesHT * 0.18);
-    totalPurchasesHT = 1400000;
-    tvaDeductible = Math.round(totalPurchasesHT * 0.18 * 0.5);
-  }
-
-  const netTvaToPay = Math.max(0, tvaCollectee - tvaDeductible);
-  const creditTva = tvaDeductible > tvaCollectee ? tvaDeductible - tvaCollectee : 0;
+  const downloadDsfSummary = () => {
+    const rows = [
+      ['Dénomination', activeDossier.name],
+      ['RCCM', activeDossier.rccm],
+      ['IFU', activeDossier.ifu],
+      ['Régime', activeDossier.regimeFiscal],
+      ['Exercice', year],
+      ['Chiffre d\'affaires HT (FCFA)', yearFlows.revenue],
+      ['Achats et services extérieurs HT (FCFA)', yearPurchases],
+      ['Valeur ajoutée brute (FCFA)', grossAddedValue],
+      ['Charges totales HT (FCFA)', yearFlows.expenses],
+      ['Résultat avant impôt (FCFA)', yearFlows.result],
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = `synthese-dsf-${year}-${activeDossier.name.replace(/[^a-zA-Z0-9]+/g, '-')}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
 
   return (
     <div className="space-y-4">
       {/* Top Banner */}
       <div className="bg-white border border-[#DDD6FE] p-5 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <span className="text-[10px] uppercase font-mono tracking-wider text-[#7024E3] font-bold">
+          <span className="text-[11px] uppercase font-mono tracking-wider text-[#7024E3] font-bold">
             Fiscalité & Déclarations Officielles • {activeDossier.country}
           </span>
           <h3 className="font-heading text-xl font-bold text-[#1E084A]">
@@ -97,7 +109,7 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
           {/* Header of Tax Form */}
           <div className="border-b border-[#EDE9FE] pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
-              <span className="text-[10px] font-mono uppercase font-bold text-[#7024E3]">
+              <span className="text-[11px] font-mono uppercase font-bold text-[#7024E3]">
                 DIRECTION GÉNÉRALE DES IMPÔTS • RÉPUBLIQUE DE {activeDossier.country.toUpperCase()}
               </span>
               <h4 className="font-heading text-lg font-bold text-[#1E084A]">
@@ -112,17 +124,29 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
               <span className="text-xs font-mono font-bold bg-[#F5F3FF] text-[#7024E3] px-2.5 py-1 rounded-lg border border-[#DDD6FE]">
                 Échéance : 15 du mois M+1
               </span>
-              <span className="block text-[10px] text-[#7C709A] font-mono mt-1">
-                Période : Septembre 2026
+              <span className="block text-[11px] text-[#7C709A] font-mono mt-1">
+                Période : {monthLabel}
               </span>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => e.target.value && setMonth(e.target.value)}
+                className="block ml-auto mt-1 text-[11px] font-mono border border-[#DDD6FE] rounded-lg px-1.5 py-0.5 bg-white text-[#1E084A]"
+              />
             </div>
           </div>
+
+          {notValidatedInMonth > 0 && (
+            <div className="bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] text-xs p-3 rounded-xl">
+              {notValidatedInMonth} écriture(s) de {monthLabel} ne sont pas encore validées : elles ne sont pas comptées dans ce bordereau. Validez-les dans « Journal & Validation » pour les inclure.
+            </div>
+          )}
 
           {/* Detailed Calculations */}
           <div className="space-y-4 text-xs font-sans">
             {/* Section A: Operations Imposables */}
             <div className="bg-[#FAF8FF] p-4 border border-[#DDD6FE] rounded-xl">
-              <h5 className="font-bold text-[#1E084A] uppercase text-[11px] mb-2 font-mono">
+              <h5 className="font-bold text-[#1E084A] uppercase text-[12px] mb-2 font-mono">
                 I. Opérations Réalisées & TVA Collectée (Taux 18%)
               </h5>
               <div className="space-y-2">
@@ -139,7 +163,7 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
 
             {/* Section B: Deductions */}
             <div className="bg-[#FAF8FF] p-4 border border-[#DDD6FE] rounded-xl">
-              <h5 className="font-bold text-[#1E084A] uppercase text-[11px] mb-2 font-mono">
+              <h5 className="font-bold text-[#1E084A] uppercase text-[12px] mb-2 font-mono">
                 II. Déductions Autorisées (TVA Déductible)
               </h5>
               <div className="space-y-2">
@@ -168,7 +192,7 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
                 <div className="text-2xl font-black font-tabular text-[#10B981]">
                   {(netTvaToPay > 0 ? netTvaToPay : creditTva).toLocaleString('fr-FR')} FCFA
                 </div>
-                <span className="text-[10px] text-[#C4B5FD] font-mono">
+                <span className="text-[11px] text-[#C4B5FD] font-mono">
                   Code guichet DGI : 444100
                 </span>
               </div>
@@ -193,14 +217,14 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
       {taxType === 'dsf' && (
         <div className="bg-white border border-[#DDD6FE] rounded-2xl p-6 shadow-xs space-y-4">
           <div className="border-b border-[#EDE9FE] pb-3.5">
-            <span className="text-[10px] font-mono uppercase font-bold text-[#7024E3]">
+            <span className="text-[11px] font-mono uppercase font-bold text-[#7024E3]">
               OHADA • DÉCLARATION STATISTIQUE ET FISCALE (DSF)
             </span>
             <h4 className="font-heading text-lg font-bold text-[#1E084A]">
               Liasse Fiscale Annuelle - Tableau 1 & 2
             </h4>
             <p className="text-xs text-[#7C709A]">
-              Préparation automatisée pour le dépôt annuel au centre des impôts compétent.
+              Chiffres clés calculés sur les écritures validées de l'exercice. La liasse officielle reste à établir avec votre expert-comptable.
             </p>
           </div>
 
@@ -218,9 +242,9 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
             <div className="p-4 bg-[#FAF8FF] border border-[#DDD6FE] rounded-xl">
               <span className="font-bold font-mono block text-[#1E084A] mb-2">Indicateurs Économiques Clefs</span>
               <div className="space-y-1 text-[#534674]">
-                <p>• Chiffre d'affaires brut : {totalSalesHT.toLocaleString('fr-FR')} FCFA</p>
-                <p>• Valeur ajoutée brute : {Math.round(totalSalesHT * 0.35).toLocaleString('fr-FR')} FCFA</p>
-                <p>• Effectif déclaré : 4 salariés permanents</p>
+                <p>• Chiffre d'affaires HT {year} : {yearFlows.revenue.toLocaleString('fr-FR')} FCFA</p>
+                <p>• Valeur ajoutée brute : {grossAddedValue.toLocaleString('fr-FR')} FCFA</p>
+                <p>• Résultat avant impôt : {yearFlows.result.toLocaleString('fr-FR')} FCFA</p>
                 <p>• Conformité plan de comptes : 100% SYSCOHADA Révisé</p>
               </div>
             </div>
@@ -228,11 +252,11 @@ export const TaxCompliance: React.FC<TaxComplianceProps> = ({
 
           <div className="flex justify-end pt-3">
             <button
-              onClick={() => alert("Génération du fichier XML normalisé pour télédéclaration fiscale...")}
+              onClick={downloadDsfSummary}
               className="px-5 py-2.5 bg-gradient-to-r from-[#7024E3] to-[#8B5CF6] text-white text-xs font-bold rounded-xl flex items-center gap-2 hover:from-[#5B18C4] hover:to-[#7024E3] shadow-xs transition-all"
             >
               <Download className="w-4 h-4" />
-              <span>Télécharger Liasse Fiscale DSF (Format Officiel)</span>
+              <span>Télécharger la synthèse DSF (CSV)</span>
             </button>
           </div>
         </div>

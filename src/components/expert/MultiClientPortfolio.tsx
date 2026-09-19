@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { ClientDossier, JournalEntry } from '../../types';
-import { 
-  Building2, 
-  Users, 
-  Clock, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Sliders, 
-  ChevronRight, 
-  Filter,
-  Plus,
-  Settings
+import {
+  Building2,
+  Users,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Sliders,
+  ChevronRight,
+  Filter
 } from 'lucide-react';
 
 interface MultiClientPortfolioProps {
@@ -19,7 +17,6 @@ interface MultiClientPortfolioProps {
   entries: JournalEntry[];
   onSelectDossier: (dossier: ClientDossier) => void;
   onUpdateConfidenceThreshold: (dossierId: string, newThreshold: number) => void;
-  onOpenSettings?: () => void;
 }
 
 export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
@@ -27,8 +24,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
   activeDossier,
   entries,
   onSelectDossier,
-  onUpdateConfidenceThreshold,
-  onOpenSettings
+  onUpdateConfidenceThreshold
 }) => {
   const [filterCountry, setFilterCountry] = useState<string>('all');
   const [editingThresholdDossierId, setEditingThresholdDossierId] = useState<string | null>(null);
@@ -55,9 +51,12 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
     };
   });
 
-  const filteredStats = filterCountry === 'all' 
-    ? dossierStats 
-    : dossierStats.filter(s => s.dossier.country === filterCountry);
+  // Dossiers à traiter en premier : les anomalies pèsent plus que les écritures en attente
+  const priorityOf = (s: { anomalies: number; pending: number }) => s.anomalies * 5 + s.pending * 2;
+  const filteredStats = (filterCountry === 'all'
+    ? dossierStats
+    : dossierStats.filter(s => s.dossier.country === filterCountry)
+  ).slice().sort((a, b) => priorityOf(b) - priorityOf(a));
 
   const totalPendingAll = dossierStats.reduce((sum, s) => sum + s.pending, 0);
   const totalAnomaliesAll = dossierStats.reduce((sum, s) => sum + s.anomalies, 0);
@@ -69,7 +68,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
       <div className="bg-[#1E084A] text-white p-6 rounded-2xl border border-[#3B1578] shadow-md">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[#A78BFA] font-bold block">
+            <span className="text-[11px] font-mono uppercase tracking-widest text-[#A78BFA] font-bold block">
               Espace Supervision Cabinet Comptable • KM Consulting
             </span>
             <h2 className="font-heading text-2xl font-black text-white mt-1">
@@ -83,22 +82,22 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
           {/* Quick Metrics */}
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="px-3.5 py-2 bg-[#2A0E68] border border-[#3B1578] rounded-xl text-center">
-              <span className="text-[10px] text-[#C4B5FD] uppercase block font-medium">Dossiers Actifs</span>
+              <span className="text-[11px] text-[#C4B5FD] uppercase block font-medium">Dossiers Actifs</span>
               <span className="text-lg font-black font-tabular text-white">{dossiers.length}</span>
             </div>
 
             <div className="px-3.5 py-2 bg-[#F59E0B]/20 border border-[#F59E0B]/40 rounded-xl text-center">
-              <span className="text-[10px] text-[#FDE68A] uppercase block font-bold">À Valider</span>
+              <span className="text-[11px] text-[#FDE68A] uppercase block font-bold">À Valider</span>
               <span className="text-lg font-black font-tabular text-[#FDE68A]">{totalPendingAll}</span>
             </div>
 
             <div className="px-3.5 py-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-xl text-center">
-              <span className="text-[10px] text-[#FCA5A5] uppercase block font-bold">Anomalies</span>
+              <span className="text-[11px] text-[#FCA5A5] uppercase block font-bold">Anomalies</span>
               <span className="text-lg font-black font-tabular text-[#FCA5A5]">{totalAnomaliesAll}</span>
             </div>
 
             <div className="px-3.5 py-2 bg-[#10B981]/20 border border-[#10B981]/40 rounded-xl text-center">
-              <span className="text-[10px] text-[#A7F3D0] uppercase block font-bold">Auto-Validées</span>
+              <span className="text-[11px] text-[#A7F3D0] uppercase block font-bold">Auto-Validées</span>
               <span className="text-lg font-black font-tabular text-[#A7F3D0]">{totalValidatedAll}</span>
             </div>
           </div>
@@ -122,16 +121,6 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
               ))}
             </select>
           </div>
-
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              className="px-3 py-1.5 bg-[#7024E3] hover:bg-[#5B18C4] text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Nouveau Projet / Paramètres</span>
-            </button>
-          )}
         </div>
 
         <span className="text-xs text-[#7C709A] font-mono">
@@ -144,7 +133,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[10px]">
+              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[11px]">
                 <th className="p-3.5">Entreprise / RCCM</th>
                 <th className="p-3.5">Activité & Ville</th>
                 <th className="p-3.5">Régime Fiscal</th>
@@ -171,12 +160,12 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
                         <Building2 className="w-3.5 h-3.5 text-[#7024E3] shrink-0" />
                         <span>{dossier.name}</span>
                         {isActive && (
-                          <span className="px-2 py-0.5 bg-[#7024E3] text-white text-[9.5px] font-bold rounded-full">
+                          <span className="px-2 py-0.5 bg-[#7024E3] text-white text-[10.5px] font-bold rounded-full">
                             Actif
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-[#7C709A] font-mono mt-0.5">
+                      <div className="text-[11px] text-[#7C709A] font-mono mt-0.5">
                         RCCM : {dossier.rccm}
                       </div>
                     </td>
@@ -184,12 +173,12 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
                     {/* Activity */}
                     <td className="p-3.5 max-w-[200px]">
                       <div className="text-[#1E084A] truncate">{dossier.activity}</div>
-                      <div className="text-[10px] text-[#7C709A] font-mono">{dossier.city}, {dossier.country}</div>
+                      <div className="text-[11px] text-[#7C709A] font-mono">{dossier.city}, {dossier.country}</div>
                     </td>
 
                     {/* Regime Fiscal */}
                     <td className="p-3.5">
-                      <span className="px-2.5 py-0.5 bg-[#F5F3FF] text-[#7024E3] border border-[#DDD6FE] text-[10px] font-bold rounded-lg">
+                      <span className="px-2.5 py-0.5 bg-[#F5F3FF] text-[#7024E3] border border-[#DDD6FE] text-[11px] font-bold rounded-lg">
                         {dossier.regimeFiscal}
                       </span>
                     </td>
@@ -202,7 +191,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
                     {/* Pending */}
                     <td className="p-3.5 text-center">
                       {pending > 0 ? (
-                        <span className="px-2 py-0.5 bg-[#F59E0B] text-[#1E084A] font-mono font-bold text-[11px] rounded-full">
+                        <span className="px-2 py-0.5 bg-[#F59E0B] text-[#1E084A] font-mono font-bold text-[12px] rounded-full">
                           {pending}
                         </span>
                       ) : (
@@ -213,7 +202,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
                     {/* Anomalies */}
                     <td className="p-3.5 text-center">
                       {anomalies > 0 ? (
-                        <span className="px-2 py-0.5 bg-[#EF4444] text-white font-mono font-bold text-[11px] rounded-full">
+                        <span className="px-2 py-0.5 bg-[#EF4444] text-white font-mono font-bold text-[12px] rounded-full">
                           {anomalies}
                         </span>
                       ) : (
@@ -237,12 +226,12 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
                             className="w-12 text-center p-1 bg-[#F8F7FD] border border-[#DDD6FE] rounded-lg text-xs font-mono font-bold text-[#1E084A]"
                             autoFocus
                           />
-                          <span className="text-[10px] font-mono text-[#7C709A]">%</span>
+                          <span className="text-[11px] font-mono text-[#7C709A]">%</span>
                         </div>
                       ) : (
                         <button
                           onClick={() => setEditingThresholdDossierId(dossier.id)}
-                          className="px-2.5 py-0.5 bg-[#F8F7FD] hover:bg-[#EDE9FE] border border-[#DDD6FE] rounded-lg font-mono text-[11px] font-bold text-[#1E084A] inline-flex items-center gap-1.5 transition-colors"
+                          className="px-2.5 py-0.5 bg-[#F8F7FD] hover:bg-[#EDE9FE] border border-[#DDD6FE] rounded-lg font-mono text-[12px] font-bold text-[#1E084A] inline-flex items-center gap-1.5 transition-colors"
                           title="Cliquer pour ajuster le seuil d'auto-validation"
                         >
                           <Sliders className="w-2.5 h-2.5 text-[#7024E3]" />

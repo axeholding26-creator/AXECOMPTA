@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { JournalEntry, ClientDossier } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { computeFlows, computeTreasury, isoDate } from '../utils/analytics';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -46,115 +47,59 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
     return entries.filter(e => e.clientDossierId === activeDossier.id);
   }, [entries, activeDossier.id]);
 
-  // Generate simulated historical + real recorded trajectory based on selected period
+  // Trajectoire réelle : chaque point agrège les écritures de sa période ; le solde cumulé part du
+  // solde réel de trésorerie à l'ouverture de la première période (aucune donnée simulée).
   const dataPoints: DataPoint[] = useMemo(() => {
-    const points: DataPoint[] = [];
     const now = new Date();
-    let initialBalance = 1650000; // Base treasury
+    const dayStart = (offsetDays: number) => {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      d.setDate(d.getDate() - offsetDays);
+      return d;
+    };
+
+    interface Bucket { label: string; fullDate: string; from: string; to: string }
+    const buckets: Bucket[] = [];
 
     if (period === '7d') {
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        const dayLabel = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
-
-        // Calculate real day transactions
-        const dayEntries = dossierEntries.filter(e => e.date === dateStr);
-        let inflow = dayEntries
-          .filter(e => e.creditAccountCode.startsWith('7') || e.label.toLowerCase().includes('vente') || e.label.toLowerCase().includes('encaissement'))
-          .reduce((sum, e) => sum + e.amount, 0);
-        let outflow = dayEntries
-          .filter(e => e.debitAccountCode.startsWith('6') || e.label.toLowerCase().includes('achat') || e.label.toLowerCase().includes('facture') || e.label.toLowerCase().includes('loyer'))
-          .reduce((sum, e) => sum + e.amount, 0);
-
-        // Baseline realistic baseline variation if no entries on that day
-        if (inflow === 0 && outflow === 0) {
-          const pseudoRandom = Math.sin(i * 1.7) * 0.5 + 0.5;
-          inflow = Math.round(120000 + pseudoRandom * 180000);
-          outflow = Math.round(65000 + (1 - pseudoRandom) * 90000);
-        }
-
-        const net = inflow - outflow;
-        initialBalance += net;
-
-        points.push({
-          label: dayLabel,
+        const d = dayStart(i);
+        buckets.push({
+          label: d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }),
           fullDate: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
-          inflow,
-          outflow,
-          net,
-          cumulativeBalance: initialBalance
+          from: isoDate(d), to: isoDate(d)
         });
       }
-    } else if (period === '30d') {
-      // 30 days grouped in 6 intervals of 5 days
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i * 5);
-        const dayLabel = `J-${i * 5 || 1}`;
-
-        const pseudoFactor = Math.sin(i * 0.9) * 0.4 + 0.6;
-        const inflow = Math.round(450000 * pseudoFactor + (i === 0 ? 320000 : 0));
-        const outflow = Math.round(280000 * (1.2 - pseudoFactor * 0.3));
-        const net = inflow - outflow;
-        initialBalance += net;
-
-        points.push({
-          label: dayLabel,
-          fullDate: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-          inflow,
-          outflow,
-          net,
-          cumulativeBalance: initialBalance
-        });
-      }
-    } else if (period === '90d') {
-      // 12 weeks
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i * 7);
-        const weekLabel = `Sem ${12 - i}`;
-
-        const waveVal = Math.cos(i * 0.7) * 0.3 + 0.7;
-        const inflow = Math.round(850000 * waveVal);
-        const outflow = Math.round(520000 * (waveVal > 0.8 ? 0.9 : 1.1));
-        const net = inflow - outflow;
-        initialBalance += net;
-
-        points.push({
-          label: weekLabel,
-          fullDate: `Semaine du ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`,
-          inflow,
-          outflow,
-          net,
-          cumulativeBalance: initialBalance
+    } else if (period === '30d' || period === '90d') {
+      const span = period === '30d' ? 5 : 7;
+      const count = period === '30d' ? 6 : 12;
+      for (let k = count - 1; k >= 0; k--) {
+        const start = dayStart(k * span + span - 1);
+        const end = dayStart(k * span);
+        buckets.push({
+          label: period === '30d' ? start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : `Sem ${count - k}`,
+          fullDate: `Du ${start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} au ${end.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`,
+          from: isoDate(start), to: isoDate(end)
         });
       }
     } else {
-      // 12 Months
-      const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-      const currentMonthIdx = now.getMonth();
       for (let i = 11; i >= 0; i--) {
-        const mIdx = (currentMonthIdx - i + 12) % 12;
-        const seasonalBoost = (mIdx === 11 || mIdx === 0 || mIdx === 8) ? 1.4 : 1.0; // Fêtes et rentrée
-        const inflow = Math.round(2800000 * seasonalBoost * (0.85 + Math.sin(i) * 0.15));
-        const outflow = Math.round(1750000 * (0.9 + Math.cos(i) * 0.1));
-        const net = inflow - outflow;
-        initialBalance += net;
-
-        points.push({
-          label: months[mIdx],
-          fullDate: `${months[mIdx]} ${now.getFullYear() - (currentMonthIdx < i ? 1 : 0)}`,
-          inflow,
-          outflow,
-          net,
-          cumulativeBalance: initialBalance
+        const first = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const last = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        buckets.push({
+          label: first.toLocaleDateString('fr-FR', { month: 'short' }),
+          fullDate: first.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
+          from: isoDate(first), to: isoDate(last)
         });
       }
     }
 
-    return points;
+    let balance = computeTreasury(dossierEntries.filter(e => e.date < buckets[0].from)).total;
+    return buckets.map(b => {
+      const flows = computeFlows(dossierEntries, b.from, b.to);
+      const net = flows.cashIn - flows.cashOut;
+      balance += net;
+      return { label: b.label, fullDate: b.fullDate, inflow: flows.cashIn, outflow: flows.cashOut, net, cumulativeBalance: balance };
+    });
   }, [period, dossierEntries]);
 
   // Aggregate totals
@@ -162,8 +107,8 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
   const totalOutflow = useMemo(() => dataPoints.reduce((acc, p) => acc + p.outflow, 0), [dataPoints]);
   const totalNet = totalInflow - totalOutflow;
   const lastBalance = dataPoints[dataPoints.length - 1]?.cumulativeBalance || 0;
-  const firstBalance = dataPoints[0]?.cumulativeBalance || 1;
-  const growthRate = Math.round(((lastBalance - firstBalance) / firstBalance) * 100);
+  const firstBalance = dataPoints[0]?.cumulativeBalance || 0;
+  const growthRate = firstBalance > 0 ? Math.round(((lastBalance - firstBalance) / firstBalance) * 100) : 0;
 
   // SVG dimensions
   const svgWidth = 700;
@@ -303,11 +248,11 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
             <div>
               <h3 className="text-sm font-black font-heading tracking-wide flex items-center gap-2">
                 <span>Graphique d'Évolution & Trésorerie</span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399] font-bold">
+                <span className="text-[11px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399] font-bold">
                   Temps Réel
                 </span>
               </h3>
-              <p className="text-[11px] text-[#7C709A] dark:text-[#A594C9] mt-0.5">
+              <p className="text-[12px] text-[#7C709A] dark:text-[#A594C9] mt-0.5">
                 Trajectoire financière, flux de liquidités et projections d'exploitation
               </p>
             </div>
@@ -376,16 +321,16 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
         {/* Current Active Value */}
         <div className="p-3 bg-[#F8F7FD] dark:bg-[#1C0F38] border border-[#EDE9FE] dark:border-[#2D1A54] rounded-xl">
-          <span className="text-[10px] uppercase font-bold text-[#7C709A] dark:text-[#A594C9] block">
+          <span className="text-[11px] uppercase font-bold text-[#7C709A] dark:text-[#A594C9] block">
             {hoveredIndex !== null ? `Au ${activePoint?.fullDate}` : 'Solde Trésorerie Actuel'}
           </span>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="text-lg font-black font-tabular text-[#7024E3] dark:text-[#A78BFA]">
               {activePoint?.cumulativeBalance.toLocaleString('fr-FR')}
             </span>
-            <span className="text-[10px] font-mono text-[#7C709A] dark:text-[#A594C9]">FCFA</span>
+            <span className="text-[11px] font-mono text-[#7C709A] dark:text-[#A594C9]">FCFA</span>
           </div>
-          <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold text-[#10B981]">
+          <div className="flex items-center gap-1 mt-0.5 text-[11px] font-bold text-[#10B981]">
             <TrendingUp className="w-3 h-3" />
             <span>+{growthRate}% sur la période</span>
           </div>
@@ -393,7 +338,7 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
 
         {/* Total Inflows */}
         <div className="p-3 bg-[#F0FDF4] dark:bg-[#0E281E] border border-[#BBF7D0] dark:border-[#134E39] rounded-xl">
-          <span className="text-[10px] uppercase font-bold text-[#166534] dark:text-[#34D399] block flex items-center justify-between">
+          <span className="text-[11px] uppercase font-bold text-[#166534] dark:text-[#34D399] block flex items-center justify-between">
             <span>Total Entrées</span>
             <ArrowDownLeft className="w-3.5 h-3.5" />
           </span>
@@ -401,16 +346,16 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
             <span className="text-lg font-black font-tabular text-[#166534] dark:text-[#34D399]">
               +{totalInflow.toLocaleString('fr-FR')}
             </span>
-            <span className="text-[10px] font-mono text-[#166534]/70 dark:text-[#34D399]/70">FCFA</span>
+            <span className="text-[11px] font-mono text-[#166534]/70 dark:text-[#34D399]/70">FCFA</span>
           </div>
-          <span className="text-[10px] text-[#166534] dark:text-[#34D399] mt-0.5 block font-medium">
+          <span className="text-[11px] text-[#166534] dark:text-[#34D399] mt-0.5 block font-medium">
             Ventes & encaissements clients
           </span>
         </div>
 
         {/* Total Outflows */}
         <div className="p-3 bg-[#FFF1F2] dark:bg-[#2B0E1B] border border-[#FECDD3] dark:border-[#521832] rounded-xl">
-          <span className="text-[10px] uppercase font-bold text-[#9F1239] dark:text-[#F43F5E] block flex items-center justify-between">
+          <span className="text-[11px] uppercase font-bold text-[#9F1239] dark:text-[#F43F5E] block flex items-center justify-between">
             <span>Total Sorties</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </span>
@@ -418,16 +363,16 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
             <span className="text-lg font-black font-tabular text-[#9F1239] dark:text-[#F43F5E]">
               -{totalOutflow.toLocaleString('fr-FR')}
             </span>
-            <span className="text-[10px] font-mono text-[#9F1239]/70 dark:text-[#F43F5E]/70">FCFA</span>
+            <span className="text-[11px] font-mono text-[#9F1239]/70 dark:text-[#F43F5E]/70">FCFA</span>
           </div>
-          <span className="text-[10px] text-[#9F1239] dark:text-[#F43F5E] mt-0.5 block font-medium">
+          <span className="text-[11px] text-[#9F1239] dark:text-[#F43F5E] mt-0.5 block font-medium">
             Achats, carburant & loyer
           </span>
         </div>
 
         {/* Net Flow / Runway */}
         <div className="p-3 bg-[#F5F3FF] dark:bg-[#20103E] border border-[#DDD6FE] dark:border-[#3B2068] rounded-xl">
-          <span className="text-[10px] uppercase font-bold text-[#7024E3] dark:text-[#C4B5FD] block flex items-center justify-between">
+          <span className="text-[11px] uppercase font-bold text-[#7024E3] dark:text-[#C4B5FD] block flex items-center justify-between">
             <span>Flux Net de Période</span>
             <Sparkles className="w-3.5 h-3.5" />
           </span>
@@ -435,9 +380,9 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
             <span className={`text-lg font-black font-tabular ${totalNet >= 0 ? 'text-[#10B981]' : 'text-[#E11D48]'}`}>
               {totalNet >= 0 ? '+' : ''}{totalNet.toLocaleString('fr-FR')}
             </span>
-            <span className="text-[10px] font-mono text-[#7C709A]">FCFA</span>
+            <span className="text-[11px] font-mono text-[#7C709A]">FCFA</span>
           </div>
-          <span className="text-[10px] text-[#7024E3] dark:text-[#A78BFA] mt-0.5 block font-medium">
+          <span className="text-[11px] text-[#7024E3] dark:text-[#A78BFA] mt-0.5 block font-medium">
             Autonomie estimée : ~4.2 mois
           </span>
         </div>
@@ -671,14 +616,14 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
               transform: 'translateX(-50%)'
             }}
           >
-            <div className="font-bold text-[11px] pb-1.5 border-b border-[#EDE9FE] dark:border-[#35225E] flex items-center justify-between gap-4">
+            <div className="font-bold text-[12px] pb-1.5 border-b border-[#EDE9FE] dark:border-[#35225E] flex items-center justify-between gap-4">
               <span>{activePoint.fullDate}</span>
-              <span className="text-[10px] font-mono text-[#7024E3] dark:text-[#A78BFA] font-bold">
+              <span className="text-[11px] font-mono text-[#7024E3] dark:text-[#A78BFA] font-bold">
                 Point #{hoveredIndex + 1}
               </span>
             </div>
             
-            <div className="space-y-1 mt-1.5 font-tabular text-[11px]">
+            <div className="space-y-1 mt-1.5 font-tabular text-[12px]">
               <div className="flex items-center justify-between gap-4 text-[#10B981]">
                 <span className="font-medium flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-[#10B981]" />
@@ -697,7 +642,7 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
 
               <div className="flex items-center justify-between gap-4 pt-1 border-t border-[#EDE9FE] dark:border-[#35225E] font-bold">
                 <span className="text-[#7024E3] dark:text-[#C4B5FD]">Solde cumulé :</span>
-                <span className="text-white dark:text-[#F3EFFF] bg-[#7024E3] px-1.5 py-0.5 rounded text-[10px]">
+                <span className="text-white dark:text-[#F3EFFF] bg-[#7024E3] px-1.5 py-0.5 rounded text-[11px]">
                   {activePoint.cumulativeBalance.toLocaleString('fr-FR')} FCFA
                 </span>
               </div>
@@ -711,25 +656,25 @@ export const EvolutionChart: React.FC<EvolutionChartProps> = ({
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1 bg-[#7024E3] dark:bg-[#A78BFA] rounded-full" />
-            <span className="text-[11px] text-[#534674] dark:text-[#C4B5FD] font-medium">
+            <span className="text-[12px] text-[#534674] dark:text-[#C4B5FD] font-medium">
               Solde Trésorerie Cumulé
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1 bg-[#10B981] rounded-full" />
-            <span className="text-[11px] text-[#534674] dark:text-[#C4B5FD] font-medium">
+            <span className="text-[12px] text-[#534674] dark:text-[#C4B5FD] font-medium">
               Encaissements (Classe 7 & 5)
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1 bg-[#F43F5E] rounded-full" />
-            <span className="text-[11px] text-[#534674] dark:text-[#C4B5FD] font-medium">
+            <span className="text-[12px] text-[#534674] dark:text-[#C4B5FD] font-medium">
               Décaissements (Classe 6)
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[11px] text-[#7C709A] dark:text-[#9B88BF]">
+        <div className="flex items-center gap-1.5 text-[12px] text-[#7C709A] dark:text-[#9B88BF]">
           <Info className="w-3.5 h-3.5 text-[#7024E3] dark:text-[#A78BFA]" />
           <span>Survolez les points pour inspecter les flux journaliers</span>
         </div>

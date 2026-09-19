@@ -101,11 +101,11 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
           <div>
             <h4 className="text-xs font-bold text-[#1E084A] flex items-center gap-1.5">
               <span>Dictée Vocale OHADA pour {dossierName}</span>
-              <span className="px-1.5 py-0.5 bg-[#EDE9FE] text-[#7024E3] text-[9px] font-mono rounded font-bold">
+              <span className="px-1.5 py-0.5 bg-[#EDE9FE] text-[#7024E3] text-[10px] font-mono rounded font-bold">
                 Microphone actif
               </span>
             </h4>
-            <p className="text-[11px] text-[#7C709A]">
+            <p className="text-[12px] text-[#7C709A]">
               Parlez naturellement : l'IA extrait montants, tiers et impute les comptes SYSCOHADA.
             </p>
           </div>
@@ -113,7 +113,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
 
         {/* Language selector & permission status */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-[11px] text-[#1E084A] bg-white border border-[#DDD6FE] px-2.5 py-1 rounded-lg">
+          <div className="flex items-center gap-1 text-[12px] text-[#1E084A] bg-white border border-[#DDD6FE] px-2.5 py-1 rounded-lg">
             <Globe className="w-3.5 h-3.5 text-[#7024E3]" />
             <select
               value={speech.language}
@@ -143,13 +143,13 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#EF4444]" />
           <div className="flex-1">
             <p className="font-bold">Accès au microphone bloqué</p>
-            <p className="text-[11px] mt-0.5">
+            <p className="text-[12px] mt-0.5">
               {speech.permissionError || "Veuillez autoriser l'accès au microphone dans la barre d'adresse de votre navigateur pour dicter vos écritures comptables."}
             </p>
           </div>
           <button
             onClick={handleStart}
-            className="px-2.5 py-1 bg-[#EF4444] text-white text-[11px] font-bold rounded-lg hover:bg-[#DC2626] transition-colors"
+            className="px-2.5 py-1 bg-[#EF4444] text-white text-[12px] font-bold rounded-lg hover:bg-[#DC2626] transition-colors"
           >
             Réessayer
           </button>
@@ -216,7 +216,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
             </span>
           </div>
 
-          <p className="text-[11px] text-[#7C709A]">
+          <p className="text-[12px] text-[#7C709A]">
             Ex: "Vente de 2 sacs de ciment à 5 000 FCFA payé en espèces" ou "Achat de carburant 15 000F par Wave"
           </p>
         </div>
@@ -224,7 +224,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
         {/* Real-time Transcription Box (Editable) */}
         <div className="w-full text-left">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[11px] font-bold text-[#1E084A] flex items-center gap-1">
+            <label className="text-[12px] font-bold text-[#1E084A] flex items-center gap-1">
               <Edit3 className="w-3.5 h-3.5 text-[#7024E3]" />
               <span>Transcription de votre voix :</span>
             </label>
@@ -235,7 +235,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
                   speech.clearTranscript();
                   setIsEditingManually(false);
                 }}
-                className="text-[10px] text-[#7C709A] hover:text-[#EF4444] flex items-center gap-0.5"
+                className="text-[11px] text-[#7C709A] hover:text-[#EF4444] flex items-center gap-0.5"
               >
                 <RotateCcw className="w-3 h-3" />
                 <span>Effacer</span>
@@ -255,7 +255,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
               className="w-full p-3 bg-[#F8F7FD] border border-[#DDD6FE] rounded-xl text-xs sm:text-sm text-[#1E084A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30 leading-relaxed placeholder:text-[#9B8EB9]"
             />
             {speech.interimTranscript && !isEditingManually && (
-              <span className="absolute bottom-2.5 right-3 text-[10px] font-mono text-[#7024E3] bg-[#EDE9FE] px-1.5 py-0.5 rounded animate-pulse">
+              <span className="absolute bottom-2.5 right-3 text-[11px] font-mono text-[#7024E3] bg-[#EDE9FE] px-1.5 py-0.5 rounded animate-pulse">
                 Transcribing...
               </span>
             )}
@@ -287,7 +287,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
 
       {/* Quick Oral Examples Chips */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#7C709A]">
+        <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#7C709A]">
           <Volume2 className="w-3.5 h-3.5 text-[#7024E3]" />
           <span>Ou essayez une formulation type OHADA en un clic :</span>
         </div>
@@ -299,7 +299,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
               className="text-left p-2 px-3 bg-white hover:bg-[#EDE9FE] border border-[#DDD6FE] rounded-xl text-xs text-[#1E084A] transition-all flex items-center justify-between group shadow-2xs"
             >
               <span className="truncate pr-2">{preset}</span>
-              <span className="text-[10px] text-[#7024E3] font-bold shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="text-[11px] text-[#7024E3] font-bold shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                 Essayer →
               </span>
             </button>

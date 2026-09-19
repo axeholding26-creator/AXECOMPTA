@@ -1,4 +1,5 @@
 import React from 'react';
+import { computeCreditAssessment } from '../../utils/analytics';
 import { ClientDossier, JournalEntry } from '../../types';
 import { 
   FileCheck, 
@@ -25,32 +26,16 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
 }) => {
   const dossierEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
 
-  // Financial calculations
-  let totalSales = 0;
-  let totalExpenses = 0;
-  let mobileMoneyOrBankCount = 0;
-
-  dossierEntries.forEach(entry => {
-    const isIncome = entry.creditAccountCode.startsWith('7') || entry.label.toLowerCase().includes('vente');
-    const isExpense = entry.debitAccountCode.startsWith('6') || entry.label.toLowerCase().includes('achat');
-
-    if (isIncome) totalSales += entry.amount;
-    if (isExpense) totalExpenses += entry.amount;
-
-    if (entry.paymentMethod !== 'cash') {
-      mobileMoneyOrBankCount++;
-    }
-  });
-
-  const totalOps = Math.max(dossierEntries.length, 1);
-  const traceabilityRate = Math.round((mobileMoneyOrBankCount / totalOps) * 100);
-  const estimatedMonthlyRevenue = Math.max(totalSales * 4, 3800000);
-  const estimatedMonthlyNetFlow = Math.max(Math.round(estimatedMonthlyRevenue * 0.28), 950000);
-  const maxMonthlyReimbursement = Math.round(estimatedMonthlyNetFlow * 0.33);
-  const suggested12MonthCredit = maxMonthlyReimbursement * 12;
-
-  // Credit Score
-  const solvabilityScore = 86;
+  // Tout est calculé sur les écritures réelles du dossier (6 derniers mois maximum)
+  const assessment = computeCreditAssessment(dossierEntries);
+  const solvabilityScore = assessment.score;
+  const estimatedMonthlyRevenue = assessment.avgMonthlyRevenue;
+  const estimatedMonthlyNetFlow = assessment.avgMonthlyNetFlow;
+  const maxMonthlyReimbursement = assessment.maxMonthlyRepayment;
+  const suggested12MonthCredit = assessment.suggested12MonthCredit;
+  const traceabilityRate = assessment.traceabilityRate;
+  const today = new Date();
+  const documentId = `AXE-${activeDossier.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}-${today.toISOString().slice(0, 10).replace(/-/g, '')}`;
 
   return (
     <div className="fixed inset-0 bg-[#1E084A]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -93,7 +78,7 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
           {/* Institutional Top Head */}
           <div className="bg-white border border-[#DDD6FE] p-5 rounded-2xl shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
-              <span className="text-[11px] uppercase tracking-widest font-mono font-bold text-[#7024E3]">
+              <span className="text-[12px] uppercase tracking-widest font-mono font-bold text-[#7024E3]">
                 RÉPUBLIQUE DE {activeDossier.country.toUpperCase()} • ESPACE OHADA
               </span>
               <h2 className="font-heading text-2xl font-black text-[#1E084A] mt-1">
@@ -109,14 +94,14 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
 
             {/* Solvability Gauge */}
             <div className="bg-gradient-to-tr from-[#1E084A] to-[#2E1065] text-white px-5 py-3.5 rounded-xl border border-[#3B1578] text-center shrink-0 shadow-xs">
-              <span className="text-[10px] uppercase tracking-wider block text-[#A78BFA] font-mono font-bold">
+              <span className="text-[11px] uppercase tracking-wider block text-[#A78BFA] font-mono font-bold">
                 Score Solvabilité IA
               </span>
               <div className="text-3xl font-black font-tabular text-white mt-0.5">
                 {solvabilityScore}<span className="text-sm font-normal text-[#A78BFA]">/100</span>
               </div>
-              <span className="text-[10px] font-bold text-[#10B981] block mt-0.5">
-                Profil Solvable & Bancable
+              <span className={`text-[11px] font-bold block mt-0.5 ${assessment.score >= 65 ? 'text-[#10B981]' : assessment.score >= 45 ? 'text-[#F59E0B]' : 'text-[#F87171]'}`}>
+                {assessment.mention}
               </span>
             </div>
           </div>
@@ -130,8 +115,9 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
               <div className="text-2xl font-black font-tabular text-[#1E084A] mt-1.5">
                 {estimatedMonthlyRevenue.toLocaleString('fr-FR')} <span className="text-xs font-mono text-[#7C709A]">FCFA</span>
               </div>
-              <span className="text-[10px] text-[#10B981] font-bold flex items-center gap-1 mt-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Traçabilité flux vérifiée
+              <span className="text-[11px] text-[#7C709A] font-bold flex items-center gap-1 mt-1.5">
+                <CheckCircle2 className={`w-3.5 h-3.5 ${assessment.sufficientData ? 'text-[#10B981]' : 'text-[#F59E0B]'}`} />
+                Moyenne sur {assessment.monthsObserved} mois observé{assessment.monthsObserved > 1 ? 's' : ''}
               </span>
             </div>
 
@@ -142,8 +128,8 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
               <div className="text-2xl font-black font-tabular text-[#10B981] mt-1.5">
                 {estimatedMonthlyNetFlow.toLocaleString('fr-FR')} <span className="text-xs font-mono text-[#7C709A]">FCFA</span>
               </div>
-              <span className="text-[10px] text-[#7C709A] mt-1.5 block">
-                Marge d'exploitation nette : 28%
+              <span className="text-[11px] text-[#7C709A] mt-1.5 block">
+                Marge d'exploitation nette : {assessment.netMarginPct}%
               </span>
             </div>
 
@@ -154,8 +140,8 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
               <div className="text-2xl font-black font-tabular text-[#7024E3] mt-1.5">
                 {maxMonthlyReimbursement.toLocaleString('fr-FR')} <span className="text-xs font-mono text-[#7C709A]">FCFA</span>
               </div>
-              <span className="text-[10px] text-[#7024E3] font-bold block mt-1.5">
-                Plafond prudentiel 33% respecté
+              <span className="text-[11px] text-[#7024E3] font-bold block mt-1.5">
+                33% du flux net mensuel (plafond prudentiel)
               </span>
             </div>
           </div>
@@ -184,7 +170,7 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
               <div className="flex items-start gap-2 text-[#1E084A]">
                 <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
                 <span>
-                  <strong>Régularité des encaissements :</strong> {traceabilityRate}% des flux passent par compte marchand Mobile Money ou banque, éliminant le risque d'omission.
+                  <strong>Traçabilité des encaissements :</strong> {traceabilityRate}% de vos ventes passent par Mobile Money ou la banque ; régularité mensuelle : {assessment.regularityRate}%.
                 </span>
               </div>
               <div className="flex items-start gap-2 text-[#1E084A]">
@@ -196,17 +182,27 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
             </div>
           </div>
 
+          {/* Points d'attention calculés */}
+          <div className="bg-white border border-[#DDD6FE] p-5 rounded-2xl shadow-2xs">
+            <h4 className="font-heading text-sm font-bold text-[#1E084A] mb-2">
+              Points d'attention pour votre demande de crédit
+            </h4>
+            <ul className="space-y-1.5 text-xs text-[#534674] list-disc pl-4">
+              {assessment.recommendations.map(r => <li key={r}>{r}</li>)}
+            </ul>
+          </div>
+
           {/* Attestation & Institutional Verification Seal */}
           <div className="bg-white border border-[#DDD6FE] p-5 rounded-2xl shadow-2xs flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="space-y-1.5 text-xs text-[#534674]">
               <p className="font-bold text-[#1E084A]">
-                Attestation délivrée par AxeCompta AI & supervisée par Cabinet KM Consulting
+                Synthèse générée par AxeCompta AI à partir des écritures enregistrées
               </p>
               <p>
-                Ce document synthétise les opérations réelles de l'entreprise enregistrées au fil de l'eau avec pièces justificatives et piste d'audit horodatée.
+                Ce document synthétise les opérations enregistrées au fil de l'eau avec piste d'audit horodatée. Il est indicatif : à faire valider par un expert-comptable avant dépôt auprès d'une banque.
               </p>
-              <p className="text-[10px] font-mono text-[#7C709A]">
-                Identifiant unique d'authenticité : OHADA-AXE-2026-CI-8492019 • Horodatage : 15 Septembre 2026
+              <p className="text-[11px] font-mono text-[#7C709A]">
+                Référence : {documentId} • Généré le {today.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
 
@@ -215,7 +211,7 @@ export const CreditReadyReport: React.FC<CreditReadyReportProps> = ({
               <div className="w-20 h-20 bg-[#1E084A] text-white flex flex-col items-center justify-center mx-auto rounded-lg p-1">
                 <QrCode className="w-16 h-16 text-white" />
               </div>
-              <span className="text-[9px] font-mono font-bold text-[#1E084A] block mt-1.5 uppercase">
+              <span className="text-[10px] font-mono font-bold text-[#1E084A] block mt-1.5 uppercase">
                 Vérification DGI / Banque
               </span>
             </div>

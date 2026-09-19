@@ -68,7 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetAllData,
   onImportBackup
 }) => {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark } = useTheme();
 
   // Active tab in Settings
   const [activeTab, setActiveTab] = useState<'dossiers' | 'syscohada' | 'ai' | 'audio' | 'display' | 'backup'>('dossiers');
@@ -297,7 +297,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <h2 className="text-lg font-black font-heading tracking-wide">
                   Paramètres de la Plateforme & Projets
                 </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#7024E3]/15 text-[#7024E3] dark:text-[#C4B5FD] font-mono">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#7024E3]/15 text-[#7024E3] dark:text-[#C4B5FD] font-mono">
                   v2026 AUDCIF
                 </span>
               </div>
@@ -340,7 +340,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <Building2 className="w-4 h-4" />
                 <span>Projets & Dossiers</span>
               </div>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+              <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded-full ${
                 activeTab === 'dossiers' ? 'bg-white/20 text-white' : 'bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD]'
               }`}>
                 {dossiers.length}
@@ -469,7 +469,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {dossier.name}
                               </h4>
                               {isActive ? (
-                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399] flex items-center gap-1">
+                                <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] dark:text-[#34D399] flex items-center gap-1">
                                   <Check className="w-3 h-3" />
                                   <span>Dossier Actif</span>
                                 </span>
@@ -479,16 +479,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     onSelectDossier(dossier);
                                     showFeedback(`Dossier actif basculé sur "${dossier.name}".`);
                                   }}
-                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD] hover:bg-[#7024E3] hover:text-white transition-colors"
+                                  className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD] hover:bg-[#7024E3] hover:text-white transition-colors"
                                   title="Basculer sur ce dossier"
                                 >
                                   Activer
                                 </button>
                               )}
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-[#2A1550] text-[#534674] dark:text-[#C4B5FD] font-bold">
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-[#2A1550] text-[#534674] dark:text-[#C4B5FD] font-bold">
                                 {countryInfo?.flag || '🌍'} {dossier.country} • {dossier.city}
                               </span>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD]">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD]">
                                 {dossier.regimeFiscal}
                               </span>
                             </div>
@@ -498,7 +498,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </p>
 
                             {/* Meta items */}
-                            <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#7C709A] dark:text-[#8E7BB8] font-mono pt-1">
+                            <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#7C709A] dark:text-[#8E7BB8] font-mono pt-1">
                               <span>Gérant: <strong>{dossier.managerName}</strong></span>
                               <span>•</span>
                               <span>Tél: <strong>{dossier.phone}</strong></span>
@@ -581,7 +581,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <option value="SYSCOHADA Révisé 2017">SYSCOHADA Révisé 2017</option>
                       <option value="Système Minimal de Trésorerie (SMT)">Système Minimal de Trésorerie (SMT)</option>
                     </select>
-                    <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                    <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                       Contrôle la nomenclature des comptes des classes 1 à 8 et l'ordonnancement du bilan.
                     </p>
                   </div>
@@ -604,7 +604,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         FCFA
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                    <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                       Tout règlement supérieur en espèces (compte 5711) génère une alerte fiscale de non-déductibilité.
                     </p>
                   </div>
@@ -629,7 +629,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         %
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                    <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                       18.00% pour la zone UEMOA (CI, Sénégal, Bénin...) ou 19.25% pour le Cameroun (CEMAC).
                     </p>
                   </div>
@@ -640,7 +640,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                         Alerter en cas de dépassement espèces
                       </span>
-                      <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                         Déclenche automatiquement une notification avec avertissement sonore.
                       </p>
                     </div>
@@ -663,7 +663,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
+                      <label className="text-[12px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
                         Caisse Espèces Principale
                       </label>
                       <input
@@ -674,7 +674,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
+                      <label className="text-[12px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
                         Ventes de Marchandises
                       </label>
                       <input
@@ -685,7 +685,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
+                      <label className="text-[12px] font-bold text-[#534674] dark:text-[#C4B5FD] block mb-1">
                         Achats de Marchandises
                       </label>
                       <input
@@ -718,7 +718,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                         Seuil Global de Confiance IA : {settings.globalConfidenceThreshold}%
                       </span>
-                      <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                         Les écritures dont le score calculé dépasse ce seuil peuvent être auto-validées pour le Grand Livre.
                       </p>
                     </div>
@@ -737,7 +737,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="w-full h-2 bg-[#DDD6FE] dark:bg-[#35225E] rounded-lg appearance-none cursor-pointer accent-[#7024E3]"
                   />
 
-                  <div className="flex justify-between text-[10px] text-[#7C709A] font-mono">
+                  <div className="flex justify-between text-[11px] text-[#7C709A] font-mono">
                     <span>50% (Permissif)</span>
                     <span>85% (Recommandé)</span>
                     <span>98% (Très strict)</span>
@@ -751,7 +751,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                         Auto-validation des flux à haute confiance
                       </span>
-                      <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                         Intègre immédiatement l'écriture sans blocage dans la file d'attente expert.
                       </p>
                     </div>
@@ -772,7 +772,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                         Détection automatique des doublons
                       </span>
-                      <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                         Identifie les reçus, factures et montants déjà saisis pour le même client.
                       </p>
                     </div>
@@ -799,11 +799,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={e => onUpdateSettings({ ...settings, aiModelPreference: e.target.value as any })}
                     className="w-full p-2.5 bg-white dark:bg-[#150A2A] border border-[#DDD6FE] dark:border-[#35225E] rounded-xl text-xs text-[#1E084A] dark:text-[#F3EFFF]"
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommandé - Raisonnement rapide et OCR multimodal)</option>
-                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Ultra rapide et économique)</option>
+                    <option value="gemini-2.5-flash">Gemini Flash — dernière version (Recommandé : raisonnement rapide et lecture de reçus)</option>
+                    <option value="gemini-2.5-flash-lite">Gemini Flash Lite — dernière version (ultra rapide et économique)</option>
                     <option value="heuristic-fast">Moteur Heuristique Local Hors-Ligne (Secours garanti)</option>
                   </select>
-                  <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                  <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                     Le système utilise automatiquement le moteur de secours heuristique en cas d'absence de clé ou de coupure réseau.
                   </p>
                 </div>
@@ -833,7 +833,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                           Alertes Sonores : {settings.soundEnabled ? 'Activées' : 'Désactivées'}
                         </span>
-                        <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                        <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                           Synthétisées avec la Web Audio API (aucun délai, qualité studio).
                         </p>
                       </div>
@@ -916,7 +916,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               {isSelected && <span className="w-2 h-2 rounded-full bg-[#7024E3] dark:bg-[#A78BFA]" />}
                               <span>{opt.label}</span>
                             </div>
-                            <p className="text-[11px] text-[#7C709A] dark:text-[#A594C9] leading-relaxed">
+                            <p className="text-[12px] text-[#7C709A] dark:text-[#A594C9] leading-relaxed">
                               {opt.description}
                             </p>
                           </div>
@@ -1001,7 +1001,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={e => onUpdateSettings({ ...settings, cabinetName: e.target.value })}
                       className="w-full p-2.5 bg-white dark:bg-[#150A2A] border border-[#DDD6FE] dark:border-[#35225E] rounded-xl text-xs font-bold"
                     />
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Apparaît en en-tête des états financiers, bilans et attestations de régularité.
                     </p>
                   </div>
@@ -1017,7 +1017,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={e => onUpdateSettings({ ...settings, expertLicenseNumber: e.target.value })}
                       className="w-full p-2.5 bg-white dark:bg-[#150A2A] border border-[#DDD6FE] dark:border-[#35225E] rounded-xl text-xs font-mono font-bold"
                     />
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Numéro d'inscription au tableau de l'Ordre des Experts-Comptables.
                     </p>
                   </div>
@@ -1035,7 +1035,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <option value="simplified">Mode Entrepreneur (Simplifié - Reçus & Trésorerie)</option>
                       <option value="expert">Mode Cabinet (Expert - Journal & Grand Livre)</option>
                     </select>
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Définit l'écran principal chargé à l'ouverture de l'application.
                     </p>
                   </div>
@@ -1053,29 +1053,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <option value="standard">Standard complet (ex: 1 500 000 FCFA)</option>
                       <option value="compact">Compact abrégé (ex: 1.5M FCFA)</option>
                     </select>
-                    <p className="text-[11px] text-[#7C709A]">
+                    <p className="text-[12px] text-[#7C709A]">
                       Style d'affichage des devises sur les cartes de trésorerie.
                     </p>
                   </div>
                 </div>
 
-                {/* Theme direct toggle button */}
-                <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
-                      Thème Visuel Actuel : {isDark ? 'Mode Nuit (Sombre)' : 'Mode Jour (Clair)'}
-                    </span>
-                    <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
-                      Optimisé pour réduire la fatigue oculaire lors des saisies d'inventaires.
-                    </p>
-                  </div>
-                  <button
-                    onClick={toggleTheme}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#7024E3] text-white hover:bg-[#5B18C4] transition-colors"
-                  >
-                    Basculer en {isDark ? 'Mode Jour' : 'Mode Nuit'}
-                  </button>
-                </div>
               </div>
             )}
 
@@ -1180,7 +1163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 border-t border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#1A0E34] flex items-center justify-between gap-3 text-xs">
-          <div className="text-[11px] text-[#7C709A] dark:text-[#A594C9] flex items-center gap-2">
+          <div className="text-[12px] text-[#7C709A] dark:text-[#A594C9] flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#10B981]" />
             <span>
               Projet actif actuel : <strong>{activeDossier.name}</strong> ({activeDossier.country})
@@ -1427,7 +1410,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-xs text-[#534674] dark:text-[#A594C9] leading-relaxed">
                   Vous êtes sur le point de supprimer le dossier <strong>"{dossierToDelete.name}"</strong> (RCCM: {dossierToDelete.rccm}).
                 </p>
-                <p className="text-[11px] text-[#7C709A] dark:text-[#8E7BB8]">
+                <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
                   Ce dossier compte actuellement {entries.filter(e => e.clientDossierId === dossierToDelete.id).length} écriture(s) associée(s).
                 </p>
               </div>

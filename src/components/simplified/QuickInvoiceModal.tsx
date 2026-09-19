@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ClientDossier, JournalEntry } from '../../types';
+import { ClientDossier, JournalEntry, PaymentMethod } from '../../types';
+import { PAYMENT_METHOD_LABEL, treasuryAccountFor } from '../../utils/paymentAccounts';
 import { Receipt, X, Printer, Check, QrCode } from 'lucide-react';
 
 interface QuickInvoiceModalProps {
@@ -18,7 +19,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
   const [itemName, setItemName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(5000);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'orange_money' | 'wave' | 'mtn_momo'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [appliedTva, setAppliedTva] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
 
@@ -38,21 +39,15 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
       date: new Date().toISOString().split('T')[0],
       label: `Vente ${quantity}x ${itemName} à ${customerName}`,
       pieceRef: invoiceNumber,
-      debitAccount: paymentMethod === 'orange_money' 
-        ? '5261 - Orange Money' 
-        : paymentMethod === 'wave' 
-          ? '5263 - Wave' 
-          : paymentMethod === 'mtn_momo'
-            ? '5262 - MTN MoMo'
-            : '5711 - Caisse',
-      debitAccountCode: paymentMethod === 'orange_money' ? '5261' : paymentMethod === 'wave' ? '5263' : paymentMethod === 'mtn_momo' ? '5262' : '5711',
+      debitAccount: `${treasuryAccountFor(paymentMethod).code} - ${PAYMENT_METHOD_LABEL[paymentMethod]}`,
+      debitAccountCode: treasuryAccountFor(paymentMethod).code,
       creditAccount: '7011 - Ventes de marchandises au comptant',
       creditAccountCode: '7011',
       amount: totalTTC,
       tvaAmount: tvaAmount,
       status: 'validated',
       confidenceScore: 99,
-      rawInput: `Facturation client ${customerName} : ${quantity}x ${itemName} pour ${totalTTC} FCFA (${paymentMethod})`,
+      rawInput: `Facturation client ${customerName} : ${quantity}x ${itemName} pour ${totalTTC} FCFA (${PAYMENT_METHOD_LABEL[paymentMethod]})`,
       inputType: 'manual',
       explanationSimplified: `Facture ${invoiceNumber} de ${totalTTC.toLocaleString('fr-FR')} FCFA générée et comptabilisée.`,
       paymentMethod,
@@ -177,6 +172,9 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
                   <option value="orange_money">Orange Money</option>
                   <option value="wave">Wave</option>
                   <option value="mtn_momo">MTN Mobile Money</option>
+                  <option value="moov_money">Moov Money</option>
+                  <option value="bank_transfer">Virement bancaire</option>
+                  <option value="cheque">Chèque bancaire</option>
                 </select>
               </div>
 
@@ -199,7 +197,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
               <div>
                 <span className="text-xs text-[#7C709A] block font-medium">Montant Total à Payer :</span>
                 {appliedTva && (
-                  <span className="text-[10px] text-[#7024E3] font-mono block">
+                  <span className="text-[11px] text-[#7024E3] font-mono block">
                     Dont TVA 18% : {tvaAmount.toLocaleString('fr-FR')} FCFA
                   </span>
                 )}
@@ -234,16 +232,16 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
                   <h4 className="font-heading text-lg font-bold text-[#1E084A]">
                     {activeDossier.name}
                   </h4>
-                  <p className="text-[11px] text-[#7C709A] font-mono">
+                  <p className="text-[12px] text-[#7C709A] font-mono">
                     RCCM: {activeDossier.rccm} • IFU: {activeDossier.ifu}
                   </p>
-                  <p className="text-[11px] text-[#7C709A]">{activeDossier.city}, {activeDossier.country}</p>
+                  <p className="text-[12px] text-[#7C709A]">{activeDossier.city}, {activeDossier.country}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-mono font-bold bg-[#F5F3FF] text-[#7024E3] px-2.5 py-1 rounded-lg border border-[#DDD6FE]">
                     {invoiceNumber}
                   </span>
-                  <span className="block text-[10px] text-[#7C709A] font-mono mt-1">
+                  <span className="block text-[11px] text-[#7C709A] font-mono mt-1">
                     Date : {new Date().toLocaleDateString('fr-FR')}
                   </span>
                 </div>
@@ -253,7 +251,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
                 <p><strong>Client :</strong> {customerName}</p>
                 {customerPhone && <p><strong>Tél :</strong> {customerPhone}</p>}
                 <p><strong>Article :</strong> {quantity}x {itemName} @ {unitPrice.toLocaleString('fr-FR')} F</p>
-                <p><strong>Règlement :</strong> {paymentMethod.toUpperCase()}</p>
+                <p><strong>Règlement :</strong> {PAYMENT_METHOD_LABEL[paymentMethod]}</p>
               </div>
 
               <div className="flex items-center justify-between pt-3 border-t border-[#EDE9FE]">
@@ -261,7 +259,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
                   <div className="w-10 h-10 bg-[#1E084A] p-1 rounded-lg flex items-center justify-center shadow-xs">
                     <QrCode className="w-8 h-8 text-white" />
                   </div>
-                  <span className="text-[9.5px] font-mono text-[#7C709A]">
+                  <span className="text-[10.5px] font-mono text-[#7C709A]">
                     Norme e-Facture OHADA
                   </span>
                 </div>

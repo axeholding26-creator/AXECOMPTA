@@ -175,7 +175,7 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse font-sans">
             <thead>
-              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[10px]">
+              <tr className="bg-[#1E084A] text-white border-b border-[#3B1578] uppercase font-mono text-[11px]">
                 <th className="p-3 w-24">N° Compte</th>
                 <th className="p-3">Intitulé SYSCOHADA</th>
                 <th className="p-3 text-right">Total Débit</th>
@@ -212,7 +212,7 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
                       <td className="p-3 text-center">
                         <button
                           onClick={() => setExpandedAccount(isExpanded ? null : acc.code)}
-                          className="px-2.5 py-1 bg-[#F8F7FD] hover:bg-[#EDE9FE] border border-[#DDD6FE] rounded-lg text-[10px] font-bold inline-flex items-center gap-1 text-[#1E084A] transition-colors"
+                          className="px-2.5 py-1 bg-[#F8F7FD] hover:bg-[#EDE9FE] border border-[#DDD6FE] rounded-lg text-[11px] font-bold inline-flex items-center gap-1 text-[#1E084A] transition-colors"
                         >
                           <span>{acc.movements.length} ops</span>
                           {isExpanded ? <ChevronDown className="w-2.5 h-2.5 text-[#7024E3]" /> : <ChevronRight className="w-2.5 h-2.5 text-[#7024E3]" />}
@@ -225,10 +225,10 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
                       <tr className="bg-[#FAF8FF]">
                         <td colSpan={7} className="p-4 border-y border-[#EDE9FE]">
                           <div className="bg-white p-4 border border-[#DDD6FE] rounded-xl shadow-2xs">
-                            <h5 className="text-[11px] font-mono font-bold text-[#1E084A] uppercase mb-2.5">
+                            <h5 className="text-[12px] font-mono font-bold text-[#1E084A] uppercase mb-2.5">
                               Extrait du Grand Livre : Compte {acc.code} — {acc.label}
                             </h5>
-                            <table className="w-full text-[11px]">
+                            <table className="w-full text-[12px]">
                               <thead>
                                 <tr className="border-b border-[#DDD6FE] text-[#7C709A] font-mono">
                                   <th className="py-1.5">Date</th>
@@ -282,7 +282,7 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
                   {grandTotalSoldeCrediteur.toLocaleString('fr-FR')} F
                 </td>
                 <td className="p-3.5 text-center">
-                  <span className="text-[10px] text-[#065F46] bg-[#D1FAE5] px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-[11px] text-[#065F46] bg-[#D1FAE5] px-2 py-0.5 rounded-full font-bold">
                     100% OK
                   </span>
                 </td>

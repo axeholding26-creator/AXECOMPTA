@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { JournalEntry, PaymentMethod, TransactionStatus } from '../types';
 import { SYSCOHADA_ACCOUNTS } from '../data/syscohadaPlan';
+import { detectPaymentMethod, paymentMethodFromCell, treasuryAccountFor, normalizeText } from './paymentAccounts';
 
 export interface ParsedRowPreview {
   id: string;
@@ -110,29 +111,12 @@ export function classifyTransactionSmart(
   confidence: number;
   anomaly?: string;
 } {
-  const norm = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const pNorm = (paymentHint || '').toLowerCase();
+  const norm = normalizeText(label);
 
-  // Determine Payment Method
-  let method: PaymentMethod = 'cash';
-  let treasuryCode = '5711'; // Caisse principale
-
-  if (pNorm.includes('wave') || norm.includes('wave')) {
-    method = 'wave';
-    treasuryCode = '5263';
-  } else if (pNorm.includes('orange') || norm.includes('orange money') || norm.includes('om ') || norm.includes('om-')) {
-    method = 'orange_money';
-    treasuryCode = '5261';
-  } else if (pNorm.includes('mtn') || norm.includes('momo') || norm.includes('mtn')) {
-    method = 'mtn_momo';
-    treasuryCode = '5262';
-  } else if (pNorm.includes('cheque') || norm.includes('cheque')) {
-    method = 'cheque';
-    treasuryCode = '5211';
-  } else if (pNorm.includes('virement') || pNorm.includes('banque') || norm.includes('virement') || norm.includes('ecobank') || norm.includes('coris') || norm.includes('bicec') || norm.includes('boa')) {
-    method = 'bank_transfer';
-    treasuryCode = '5211';
-  }
+  // Mode de paiement : la colonne dédiée prime, sinon le libellé ; espèces si rien n'est précisé.
+  // Le compte de trésorerie en découle : espèces 5711, chèque/virement 5211, Orange 5261, MTN 5262, Wave 5263, Moov 5264.
+  const method: PaymentMethod = paymentMethodFromCell(paymentHint) ?? detectPaymentMethod(label) ?? 'cash';
+  const treasuryCode = treasuryAccountFor(method).code;
 
   // If explicit codes are given, use them
   if (explicitDebit && explicitCredit) {

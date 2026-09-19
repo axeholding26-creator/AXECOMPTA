@@ -26,7 +26,8 @@ import { soundManager } from '../../utils/sound';
 
 interface ConversationalAgentProps {
   activeDossier: ClientDossier;
-  onNewEntry: (entry: JournalEntry) => void;
+  /** Enregistre l'écriture ; retourne false si l'enregistrement a échoué. */
+  onNewEntry: (entry: JournalEntry) => void | boolean | Promise<void | boolean>;
   recentEntries: JournalEntry[];
   onOpenExcelImport?: () => void;
 }
@@ -36,10 +37,49 @@ interface MessageItem {
   sender: 'user' | 'agent';
   time: string;
   text: string;
-  entry?: JournalEntry;
+  entries?: JournalEntry[];
   type?: 'text' | 'voice' | 'photo' | 'mobile_money';
   audioDuration?: string;
   photoUrl?: string;
+  documentName?: string;
+  quickActions?: string[];
+}
+
+type UploadedDocument = { data: string; mimeType: string };
+
+// Réduit les photos de reçus (max 1600 px) pour un envoi rapide sur réseau mobile
+async function prepareDocument(file: File): Promise<{ previewUrl?: string; document: UploadedDocument }> {
+  const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+  if (file.type === 'application/pdf') {
+    const dataUrl = await readAsDataUrl(file);
+    return { document: { data: dataUrl.split(',')[1], mimeType: file.type } };
+  }
+
+  const original = await readAsDataUrl(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = original;
+    });
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const resized = canvas.toDataURL('image/jpeg', 0.85);
+    return { previewUrl: resized, document: { data: resized.split(',')[1], mimeType: 'image/jpeg' } };
+  } catch {
+    // Format non décodable par le navigateur : on envoie le fichier tel quel
+    return { previewUrl: original, document: { data: original.split(',')[1], mimeType: file.type || 'image/jpeg' } };
+  }
 }
 
 export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
@@ -61,28 +101,18 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initial conversational messages
+  const greetingTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       id: 'msg-init-1',
       sender: 'agent',
-      time: '08:30',
-      text: `Bonjour M. ${activeDossier.managerName} ! Je suis votre agent AxeCompta. Qu'avez-vous vendu ou acheté aujourd'hui pour ${activeDossier.name} ? Vous pouvez me parler en français courant, m'envoyer un message vocal ou photographier un reçu.`
-    },
-    {
-      id: 'msg-init-2',
-      sender: 'user',
-      time: '09:15',
-      text: "J'ai vendu 3 sacs de ciment à 5000F, payé cash",
-      type: 'text'
-    },
-    {
-      id: 'msg-init-3',
-      sender: 'agent',
-      time: '09:15',
-      text: "C'est noté ! J'ai enregistré votre vente de 15 000 FCFA en espèces. Votre caisse est créditée de 15 000 FCFA.",
-      entry: recentEntries[0]
+      time: greetingTime,
+      text: `Bonjour M. ${activeDossier.managerName} ! Je suis votre agent AxeCompta. Qu'avez-vous vendu ou acheté aujourd'hui pour ${activeDossier.name} ? Dites-moi aussi comment c'était payé (espèces, chèque, virement, Orange Money, MTN, Wave, Moov) : j'enregistre dans le bon compte. Vous pouvez écrire, parler, coller un SMS Mobile Money, photographier un reçu ou me poser une question sur vos chiffres.`,
+      quickActions: ["Combien j'ai en caisse ?", 'Mes ventes du mois', "Qui me doit de l'argent ?"]
     }
   ]);
+  // Message en attente de précision (ex : montant manquant) : la réponse suivante le complète
+  const [pendingText, setPendingText] = useState<string | undefined>();
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -120,152 +150,98 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
     }
   };
 
-  // Process text or voice input through API
+  // Envoie le message à l'agent : il comprend une opération, répond à une question ou demande une précision
   const handleProcessInput = async (
-    textToProcess: string, 
+    textToProcess: string,
     inputType: 'text' | 'voice' | 'photo' | 'mobile_money' = 'text',
     duration?: string,
-    photoDataUrl?: string
+    upload?: { previewUrl?: string; document: UploadedDocument; fileName: string },
+    fresh: boolean = false
   ) => {
-    if (!textToProcess.trim()) return;
+    if (!textToProcess.trim() && !upload) return;
 
-    const userMsgId = `usr-${Date.now()}`;
-    const nowTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const nowTime = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-    // Add user message to UI
-    const newUserMsg: MessageItem = {
-      id: userMsgId,
+    setMessages(prev => [...prev, {
+      id: `usr-${Date.now()}`,
       sender: 'user',
-      time: nowTime,
-      text: textToProcess,
+      time: nowTime(),
+      text: textToProcess || (upload ? 'Document envoyé' : ''),
       type: inputType,
       audioDuration: duration,
-      photoUrl: photoDataUrl
-    };
-
-    setMessages(prev => [...prev, newUserMsg]);
+      photoUrl: upload?.previewUrl,
+      documentName: upload && !upload.previewUrl ? upload.fileName : undefined
+    }]);
     setInputText('');
     setIsLoading(true);
 
+    const addAgentMessage = (msg: Omit<MessageItem, 'id' | 'sender' | 'time'>) =>
+      setMessages(prev => [...prev, { id: `agt-${Date.now()}-${Math.random()}`, sender: 'agent', time: nowTime(), ...msg }]);
+
     try {
-      const response = await fetch('/api/gemini/categorize', {
+      const response = await fetch('/api/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: textToProcess,
-          inputType,
-          dossierActivity: activeDossier.activity,
-          dossierCountry: activeDossier.country
+          dossierId: activeDossier.id,
+          message: textToProcess,
+          inputType: upload ? 'photo' : inputType,
+          pendingText: fresh || upload ? undefined : pendingText,
+          image: upload?.document
         })
       });
+      const result = await response.json().catch(() => ({}));
 
-      const result = await response.json();
-      const parsedData = result.data || {};
+      if (!response.ok) {
+        setPendingText(undefined);
+        addAgentMessage({ text: result.error || `Je n'ai pas pu traiter ce message (erreur ${response.status}).` });
+        return;
+      }
 
-      const newEntry: JournalEntry = {
-        id: `entry-${Date.now()}`,
-        clientDossierId: activeDossier.id,
-        date: new Date().toISOString().split('T')[0],
-        label: parsedData.label || textToProcess,
-        pieceRef: `OP-${Math.floor(1000 + Math.random() * 9000)}`,
-        debitAccount: parsedData.debitAccount || '5711 - Caisse',
-        debitAccountCode: parsedData.debitAccountCode || '5711',
-        creditAccount: parsedData.creditAccount || '7011 - Ventes',
-        creditAccountCode: parsedData.creditAccountCode || '7011',
-        amount: parsedData.amount || 15000,
-        tvaAmount: parsedData.tvaAmount || 0,
-        status: parsedData.detectedAnomaly 
-          ? 'anomaly' 
-          : parsedData.confidenceScore >= activeDossier.confidenceThreshold 
-            ? 'validated' 
-            : 'pending_review',
-        confidenceScore: parsedData.confidenceScore || 90,
-        detectedAnomaly: parsedData.detectedAnomaly,
-        rawInput: textToProcess,
-        inputType,
-        explanationSimplified: parsedData.explanationSimplified || "Écriture enregistrée avec succès.",
-        paymentMethod: parsedData.paymentMethod || 'cash',
-        auditTrail: [
-          {
-            id: `aud-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            action: parsedData.detectedAnomaly 
-              ? 'anomaly_flagged' 
-              : parsedData.confidenceScore >= activeDossier.confidenceThreshold 
-                ? 'auto_validated' 
-                : 'created_by_ai',
-            author: 'Agent AxeCompta (IA Syscohada)',
-            confidenceScore: parsedData.confidenceScore,
-            notes: parsedData.detectedAnomaly || `Attribué via ${result.source || 'IA'}`
-          }
-        ]
-      };
+      setPendingText(result.pendingText);
+      const entries: JournalEntry[] = result.entries ?? [];
 
-      onNewEntry(newEntry);
-
-      // Add Agent reply
-      const agentMsg: MessageItem = {
-        id: `agt-${Date.now()}`,
-        sender: 'agent',
-        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        text: parsedData.explanationSimplified,
-        entry: newEntry
-      };
-
-      setMessages(prev => [...prev, agentMsg]);
+      if (entries.length > 0) {
+        let failed = 0;
+        for (const entry of entries) {
+          const saved = await Promise.resolve(onNewEntry(entry));
+          if (saved === false) failed++;
+        }
+        addAgentMessage({
+          text: failed
+            ? `${result.reply}\n\n⚠️ ${failed} écriture(s) n'ont pas pu être enregistrées. Réessayez dans un instant.`
+            : result.reply,
+          entries,
+          quickActions: result.quickActions
+        });
+      } else {
+        addAgentMessage({ text: result.reply || "Je n'ai rien à enregistrer pour ce message.", quickActions: result.quickActions });
+      }
     } catch (err) {
       console.error(err);
-      // Fallback response
-      const fallbackEntry: JournalEntry = {
-        id: `entry-${Date.now()}`,
-        clientDossierId: activeDossier.id,
-        date: new Date().toISOString().split('T')[0],
-        label: textToProcess,
-        pieceRef: `OP-${Math.floor(1000 + Math.random() * 9000)}`,
-        debitAccount: '5711 - Caisse principale',
-        debitAccountCode: '5711',
-        creditAccount: '7011 - Ventes de marchandises',
-        creditAccountCode: '7011',
-        amount: 25000,
-        tvaAmount: 0,
-        status: 'validated',
-        confidenceScore: 92,
-        rawInput: textToProcess,
-        inputType,
-        explanationSimplified: `Opération de 25 000 FCFA enregistrée dans votre livre de caisse.`,
-        paymentMethod: 'cash',
-        auditTrail: []
-      };
-      onNewEntry(fallbackEntry);
-
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `agt-${Date.now()}`,
-          sender: 'agent',
-          time: nowTime,
-          text: `Bien reçu ! J'ai enregistré votre opération de 25 000 FCFA.`,
-          entry: fallbackEntry
-        }
-      ]);
+      setPendingText(undefined);
+      addAgentMessage({ text: "Connexion impossible pour le moment : rien n'a été enregistré. Vérifiez votre réseau et réessayez." });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle Photo Upload
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Photo ou PDF : envoyé tel quel à l'agent qui lit le document (fournisseur, date, TVA, total)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      const simulatedPhotoText = "Facture reçue : Fournitures de magasin ETS SOCOCE pour 42 500 FCFA réglé en espèces";
-      handleProcessInput(simulatedPhotoText, 'photo', undefined, dataUrl);
+    try {
+      const prepared = await prepareDocument(file);
       setActiveTab('chat');
-    };
-    reader.readAsDataURL(file);
+      await handleProcessInput(inputText.trim(), 'photo', undefined, { ...prepared, fileName: file.name }, true);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: `agt-${Date.now()}`, sender: 'agent',
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        text: "Impossible de lire ce fichier. Essayez une photo JPEG/PNG ou un PDF."
+      }]);
+    }
   };
 
   // Quick preset shortcuts
@@ -273,18 +249,20 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
     "J'ai vendu 3 sacs de ciment à 5000F, payé cash",
     "Paiement facture CIE électricité 48 500F par Orange Money",
     "Achat 15 paquets de fer à béton chez Sotaci 180 000F par virement",
-    "Retrait espèces 350 000F sans justificatif précis"
+    "Retrait espèces 350 000F sans justificatif précis",
+    "Combien j'ai en caisse ?",
+    "Puis-je payer mon loyer ce mois-ci ?"
   ];
 
   return (
-    <div className="flex flex-col h-[680px] bg-white border border-[#DDD6FE] rounded-2xl shadow-xs overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-220px)] min-h-[560px] max-h-[840px] bg-white border border-[#DDD6FE] rounded-2xl shadow-xs overflow-hidden">
       {/* Top Bar: Conversational WhatsApp-like Header */}
-      <div className="bg-[#1E084A] text-white px-5 py-3.5 border-b border-[#3B1578] flex items-center justify-between">
+      <div className="bg-[#1E084A] text-white px-5 py-3.5 border-b border-[#3B1578] flex flex-col gap-3">
         <div className="flex items-center gap-3">
           {/* Avatar Agent */}
           <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#7024E3] to-[#8B5CF6] border border-white/20 flex items-center justify-center font-heading text-lg font-black text-white shadow-xs">
-              A
+            <div className="w-10 h-10 rounded-xl bg-white border border-white/20 flex items-center justify-center shadow-xs overflow-hidden p-1">
+              <img src="/logo.png" alt="AxeCompta" className="w-full h-full object-contain" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#10B981] border-2 border-[#1E084A] rounded-full" />
           </div>
@@ -294,11 +272,11 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
               <h3 className="font-heading text-base font-bold text-white leading-tight">
                 Agent AxeCompta
               </h3>
-              <span className="px-2 py-0.5 bg-[#7024E3] text-white text-[9.5px] font-bold uppercase rounded font-mono">
+              <span className="px-2 py-0.5 bg-[#7024E3] text-white text-[10.5px] font-bold uppercase rounded font-mono">
                 IA OHADA
               </span>
             </div>
-            <p className="text-[11px] text-[#C4B5FD] flex items-center gap-1.5 mt-0.5">
+            <p className="text-[12px] text-[#C4B5FD] flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
               Prêt pour vos ventes, achats et reçus (WhatsApp & Web)
             </p>
@@ -306,7 +284,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
         </div>
 
         {/* Action Tabs for input modalities */}
-        <div className="flex items-center bg-[#2A0E68] p-1 rounded-xl border border-[#3B1578] overflow-x-auto">
+        <div className="flex items-center justify-center gap-1 self-center max-w-full bg-[#2A0E68] p-1.5 rounded-xl border border-white/10 shadow-[inset_0_1px_4px_rgba(0,0,0,0.4)] overflow-x-auto">
           <button
             onClick={() => setActiveTab('chat')}
             className={`px-3 py-1 text-xs font-bold rounded-lg transition-all shrink-0 ${
@@ -386,7 +364,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-mono font-bold">Dictée vocale transcrite</span>
-                        <span className="text-[11px] opacity-75">({msg.audioDuration || '00:04'})</span>
+                        <span className="text-[12px] opacity-75">({msg.audioDuration || '00:04'})</span>
                       </div>
                     </div>
                     {/* Audio track waveform visual representation */}
@@ -414,76 +392,99 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                   </div>
                 )}
 
-                <p className="leading-relaxed font-normal">{msg.text}</p>
+                {msg.documentName && (
+                  <div className="mb-2.5 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-[12px] flex items-center gap-2">
+                    <FileText className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{msg.documentName}</span>
+                  </div>
+                )}
+
+                <p className="leading-relaxed font-normal whitespace-pre-line">{msg.text}</p>
 
                 {/* Generated SYSCOHADA Entry Card if present */}
-                {msg.entry && (
-                  <div className={`mt-3 pt-3 border-t text-xs ${isAgent ? 'border-white/15' : 'border-[#EDE9FE]'}`}>
+                {(msg.entries ?? []).map(entry => (
+                  <div key={entry.id} className={`mt-3 pt-3 border-t text-xs ${isAgent ? 'border-white/15' : 'border-[#EDE9FE]'}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
-                        {msg.entry.status === 'validated' && (
-                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#10B981] text-white font-bold text-[10px] rounded">
+                        {entry.status === 'validated' && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#10B981] text-white font-bold text-[11px] rounded">
                             <CheckCircle2 className="w-3 h-3" /> Validé auto
                           </span>
                         )}
-                        {msg.entry.status === 'pending_review' && (
-                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#F59E0B] text-[#1E084A] font-bold text-[10px] rounded">
+                        {entry.status === 'pending_review' && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#F59E0B] text-[#1E084A] font-bold text-[11px] rounded">
                             <Clock className="w-3 h-3" /> À valider par cabinet
                           </span>
                         )}
-                        {msg.entry.status === 'anomaly' && (
-                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#EF4444] text-white font-bold text-[10px] rounded">
+                        {entry.status === 'anomaly' && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-[#EF4444] text-white font-bold text-[11px] rounded">
                             <AlertTriangle className="w-3 h-3" /> Anomalie signalée
                           </span>
                         )}
-                        <span className="text-[10px] font-mono opacity-80">
-                          Confiance: {msg.entry.confidenceScore}%
+                        <span className="text-[11px] font-mono opacity-80">
+                          Confiance: {entry.confidenceScore}%
                         </span>
                       </div>
 
                       <span className="font-tabular font-extrabold text-base tracking-tight text-[#A78BFA]">
-                        {msg.entry.amount.toLocaleString('fr-FR')} FCFA
+                        {entry.amount.toLocaleString('fr-FR')} FCFA
                       </span>
                     </div>
 
-                    {msg.entry.detectedAnomaly && (
-                      <div className="bg-[#EF4444]/20 text-[#FCA5A5] p-2.5 rounded-lg my-2 text-[11px] flex items-start gap-2 border border-[#EF4444]/40">
+                    {entry.detectedAnomaly && (
+                      <div className="bg-[#EF4444]/20 text-[#FCA5A5] p-2.5 rounded-lg my-2 text-[12px] flex items-start gap-2 border border-[#EF4444]/40">
                         <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#F87171]" />
-                        <span>{msg.entry.detectedAnomaly}</span>
+                        <span>{entry.detectedAnomaly}</span>
                       </div>
                     )}
 
                     {/* Toggle accounting details */}
                     <div className="mt-2">
                       <button
-                        onClick={() => setShowTechnicalSYSCOHADA(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
-                        className="text-[10px] font-semibold underline flex items-center gap-1 text-[#C4B5FD] hover:text-white transition-colors"
+                        onClick={() => setShowTechnicalSYSCOHADA(prev => ({ ...prev, [msg.id + entry.id]: !prev[msg.id + entry.id] }))}
+                        className="text-[11px] font-semibold underline flex items-center gap-1 text-[#C4B5FD] hover:text-white transition-colors"
                       >
-                        {showTechnicalSYSCOHADA[msg.id] ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
-                        <span>{showTechnicalSYSCOHADA[msg.id] ? 'Masquer écriture SYSCOHADA' : 'Voir imputation comptable OHADA'}</span>
+                        {showTechnicalSYSCOHADA[msg.id + entry.id] ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                        <span>{showTechnicalSYSCOHADA[msg.id + entry.id] ? 'Masquer écriture SYSCOHADA' : 'Voir imputation comptable OHADA'}</span>
                       </button>
 
-                      {showTechnicalSYSCOHADA[msg.id] && (
-                        <div className="mt-2 p-2.5 bg-[#130432] text-white rounded-lg font-mono text-[10px] space-y-1.5 border border-[#3B1578]">
+                      {showTechnicalSYSCOHADA[msg.id + entry.id] && (
+                        <div className="mt-2 p-2.5 bg-[#130432] text-white rounded-lg font-mono text-[11px] space-y-1.5 border border-[#3B1578]">
                           <div className="flex justify-between">
-                            <span className="text-[#A78BFA] font-bold">Débit : {msg.entry.debitAccount}</span>
-                            <span className="text-[#10B981] font-bold">{msg.entry.amount.toLocaleString('fr-FR')} F</span>
+                            <span className="text-[#A78BFA] font-bold">Débit : {entry.debitAccount}</span>
+                            <span className="text-[#10B981] font-bold">{entry.amount.toLocaleString('fr-FR')} F</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-[#C4B5FD]">Crédit : {msg.entry.creditAccount}</span>
-                            <span className="text-[#10B981] font-bold">{msg.entry.amount.toLocaleString('fr-FR')} F</span>
+                            <span className="text-[#C4B5FD]">Crédit : {entry.creditAccount}</span>
+                            <span className="text-[#10B981] font-bold">{entry.amount.toLocaleString('fr-FR')} F</span>
                           </div>
-                          <div className="text-[9px] text-[#A78BFA]/80 pt-1 border-t border-[#3B1578]">
-                            Réf pièce: {msg.entry.pieceRef} • Conforme SYSCOHADA Révisé
+                          <div className="text-[10px] text-[#A78BFA]/80 pt-1 border-t border-[#3B1578]">
+                            Réf pièce: {entry.pieceRef} • Conforme SYSCOHADA Révisé
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
+                ))}
+
+
+                {isAgent && msg.quickActions && msg.quickActions.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {msg.quickActions.map(q => (
+                      <button
+                        key={q}
+                        onClick={() => handleProcessInput(q, 'text', undefined, undefined, true)}
+                        disabled={isLoading}
+                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[11px] font-medium rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 )}
 
                 <span
-                  className={`block text-[9px] mt-1.5 font-mono ${
+                  className={`block text-[10px] mt-1.5 font-mono ${
                     isAgent ? 'text-[#C4B5FD]' : 'text-[#7C709A]'
                   }`}
                 >
@@ -498,7 +499,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
           <div className="flex items-start">
             <div className="p-3.5 bg-[#1E084A] text-white border border-[#3B1578] rounded-bubble-agent text-xs flex items-center gap-2.5 shadow-sm">
               <RefreshCw className="w-4 h-4 animate-spin text-[#7024E3]" />
-              <span>AxeCompta analyse l'opération et calcule l'écriture SYSCOHADA...</span>
+              <span>AxeCompta lit votre message et prépare l'écriture SYSCOHADA...</span>
             </div>
           </div>
         )}
@@ -523,7 +524,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#1E084A] flex items-center gap-1.5">
               <Camera className="w-4 h-4 text-[#7024E3]" />
-              Scanner un Reçu ou une Facture
+              Scanner un Reçu, une Facture ou un PDF
             </span>
             <button 
               onClick={() => setActiveTab('chat')} 
@@ -538,11 +539,11 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
           >
             <UploadCloud className="w-8 h-8 text-[#7024E3] mx-auto mb-2" />
             <p className="text-xs font-bold text-[#1E084A]">Cliquez pour sélectionner un reçu ou glissez une photo</p>
-            <p className="text-[11px] text-[#7C709A] mt-1">Extraction automatique : fournisseur, date, montants HT/TVA/TTC et imputation</p>
+            <p className="text-[12px] text-[#7C709A] mt-1">Lecture automatique : fournisseur, date, TVA, total. Ajoutez le mode de paiement dans le message si le reçu ne le dit pas.</p>
             <input 
               ref={fileInputRef} 
               type="file" 
-              accept="image/*" 
+              accept="image/*,application/pdf" 
               className="hidden" 
               onChange={handlePhotoUpload}
             />
@@ -576,7 +577,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
             <button
               onClick={() => {
                 if (smsRawText.trim()) {
-                  handleProcessInput(smsRawText, 'mobile_money');
+                  handleProcessInput(smsRawText, 'mobile_money', undefined, undefined, true);
                   setSmsRawText('');
                   setActiveTab('chat');
                 }
@@ -592,13 +593,13 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
 
       {/* Preset Quick Chips */}
       <div className="px-4 py-2.5 bg-[#F5F3FF] border-t border-[#EDE9FE] flex items-center gap-2 overflow-x-auto whitespace-nowrap">
-        <span className="text-[10px] uppercase font-bold text-[#7C709A] shrink-0">
+        <span className="text-[11px] uppercase font-bold text-[#7C709A] shrink-0">
           Exemples :
         </span>
         {onOpenExcelImport && (
           <button
             onClick={onOpenExcelImport}
-            className="px-2.5 py-1 bg-[#10B981]/15 text-[#065F46] hover:bg-[#10B981] hover:text-white border border-[#10B981]/30 text-[11px] font-bold rounded-lg transition-all shadow-2xs shrink-0 flex items-center gap-1"
+            className="px-2.5 py-1 bg-[#10B981]/15 text-[#065F46] hover:bg-[#10B981] hover:text-white border border-[#10B981]/30 text-[12px] font-bold rounded-lg transition-all shadow-2xs shrink-0 flex items-center gap-1"
           >
             <FileSpreadsheet className="w-3 h-3" />
             <span>Importer fichier Excel (.xlsx)</span>
@@ -607,8 +608,8 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
         {PRESET_PROMPTS.map((prompt, idx) => (
           <button
             key={idx}
-            onClick={() => handleProcessInput(prompt, 'text')}
-            className="px-2.5 py-1 bg-white text-[#1E084A] hover:bg-[#7024E3] hover:text-white border border-[#DDD6FE] text-[11px] font-medium rounded-lg transition-all shadow-2xs shrink-0"
+            onClick={() => handleProcessInput(prompt, 'text', undefined, undefined, true)}
+            className="px-2.5 py-1 bg-white text-[#1E084A] hover:bg-[#7024E3] hover:text-white border border-[#DDD6FE] text-[12px] font-medium rounded-lg transition-all shadow-2xs shrink-0"
           >
             {prompt}
           </button>
@@ -624,7 +625,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
           </div>
           <button
             onClick={() => speech.startListening()}
-            className="px-2.5 py-1 bg-[#EF4444] text-white rounded text-[11px] font-bold hover:bg-[#DC2626] transition-colors shrink-0"
+            className="px-2.5 py-1 bg-[#EF4444] text-white rounded text-[12px] font-bold hover:bg-[#DC2626] transition-colors shrink-0"
           >
             Réessayer
           </button>
@@ -667,7 +668,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                   })}
                 </div>
               </div>
-              <p className="truncate text-white font-medium pl-1 text-[11px] sm:text-xs">
+              <p className="truncate text-white font-medium pl-1 text-[12px] sm:text-xs">
                 {speech.fullTranscript ? (
                   <span className="font-semibold text-white">"{speech.fullTranscript}"</span>
                 ) : (
@@ -713,7 +714,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Ex: 'J'ai vendu 5 sacs d'engrais à 18 000F reçu par Orange Money' ou cliquez sur le micro pour parler..."
+              placeholder="Ex : 'J'ai vendu 5 sacs à 18 000F par Orange Money' — ou posez une question : 'Combien j'ai en caisse ?'"
               className="flex-1 bg-[#F8F7FD] text-[#1E084A] text-xs lg:text-sm px-4 py-2.5 border border-[#DDD6FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30 placeholder:text-[#9B8EB9]"
             />
             <button

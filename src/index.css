@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Échelle typographique légèrement agrandie pour toute l'application
+   (text-xs à text-xl), afin que les textes soient plus lisibles. */
+@theme {
+  --text-xs: 0.8125rem;      /* 13px, au lieu de 12px */
+  --text-xs--line-height: 1.2rem;
+  --text-sm: 0.9375rem;      /* 15px, au lieu de 14px */
+  --text-sm--line-height: 1.4rem;
+  --text-base: 1.0625rem;    /* 17px, au lieu de 16px */
+  --text-base--line-height: 1.65rem;
+  --text-lg: 1.1875rem;      /* 19px, au lieu de 18px */
+  --text-lg--line-height: 1.8rem;
+  --text-xl: 1.3125rem;      /* 21px, au lieu de 20px */
+  --text-xl--line-height: 1.85rem;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {

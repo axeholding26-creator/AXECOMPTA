@@ -64,7 +64,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
       {/* Header with Switcher & Actions */}
       <div className="bg-white border border-[#DDD6FE] p-5 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <span className="text-[10px] uppercase font-mono tracking-wider text-[#7024E3] font-bold">
+          <span className="text-[11px] uppercase font-mono tracking-wider text-[#7024E3] font-bold">
             Système Normal & SMT • OHADA
           </span>
           <h3 className="font-heading text-xl font-bold text-[#1E084A]">
@@ -117,7 +117,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
           <div className="bg-white border border-[#DDD6FE] rounded-2xl overflow-hidden shadow-xs">
             <div className="bg-[#1E084A] text-white p-3.5 border-b border-[#3B1578] flex items-center justify-between">
               <h4 className="font-heading text-sm font-bold uppercase tracking-wide">Bilan Actif</h4>
-              <span className="text-[10px] font-mono text-[#A78BFA]">Montants Nets (FCFA)</span>
+              <span className="text-[11px] font-mono text-[#A78BFA]">Montants Nets (FCFA)</span>
             </div>
 
             <div className="p-4 space-y-4 text-xs font-sans">
@@ -127,7 +127,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>ACTIF IMMOBILISÉ (Classe 2)</span>
                   <span className="font-tabular font-black">{immobilized2.toLocaleString('fr-FR')}</span>
                 </div>
-                <div className="pl-3 pt-1.5 text-[11px] text-[#7C709A] flex justify-between">
+                <div className="pl-3 pt-1.5 text-[12px] text-[#7C709A] flex justify-between">
                   <span>Matériel d'exploitation, outillage & agencements</span>
                   <span className="font-tabular font-mono text-[#1E084A]">{immobilized2.toLocaleString('fr-FR')}</span>
                 </div>
@@ -139,7 +139,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>ACTIF CIRCULANT (Classes 3 & 4)</span>
                   <span className="font-tabular font-black">{(stocks3 + receivables4).toLocaleString('fr-FR')}</span>
                 </div>
-                <div className="pl-3 pt-1.5 space-y-1.5 text-[11px] text-[#7C709A]">
+                <div className="pl-3 pt-1.5 space-y-1.5 text-[12px] text-[#7C709A]">
                   <div className="flex justify-between">
                     <span>Stocks de marchandises (Compte 31)</span>
                     <span className="font-tabular font-mono text-[#1E084A]">{stocks3.toLocaleString('fr-FR')}</span>
@@ -157,7 +157,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>TRÉSORERIE - ACTIF (Classe 5)</span>
                   <span className="font-tabular font-black text-[#10B981]">{treasuryCashBank5.toLocaleString('fr-FR')}</span>
                 </div>
-                <div className="pl-3 pt-1.5 text-[11px] text-[#7C709A] flex justify-between">
+                <div className="pl-3 pt-1.5 text-[12px] text-[#7C709A] flex justify-between">
                   <span>Banques, Mobile Money (OM, Wave) & Caisse</span>
                   <span className="font-tabular font-mono text-[#10B981] font-bold">{treasuryCashBank5.toLocaleString('fr-FR')}</span>
                 </div>
@@ -175,7 +175,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
           <div className="bg-white border border-[#DDD6FE] rounded-2xl overflow-hidden shadow-xs">
             <div className="bg-[#1E084A] text-white p-3.5 border-b border-[#3B1578] flex items-center justify-between">
               <h4 className="font-heading text-sm font-bold uppercase tracking-wide">Bilan Passif</h4>
-              <span className="text-[10px] font-mono text-[#A78BFA]">Capitaux & Dettes (FCFA)</span>
+              <span className="text-[11px] font-mono text-[#A78BFA]">Capitaux & Dettes (FCFA)</span>
             </div>
 
             <div className="p-4 space-y-4 text-xs font-sans">
@@ -185,7 +185,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>CAPITAUX PROPRES & RESSOURCES (Classe 1)</span>
                   <span className="font-tabular font-black">{(capital1 + calculatedReserves + netProfit).toLocaleString('fr-FR')}</span>
                 </div>
-                <div className="pl-3 pt-1.5 space-y-1.5 text-[11px] text-[#7C709A]">
+                <div className="pl-3 pt-1.5 space-y-1.5 text-[12px] text-[#7C709A]">
                   <div className="flex justify-between">
                     <span>Capital social (Compte 101)</span>
                     <span className="font-tabular font-mono text-[#1E084A]">{capital1.toLocaleString('fr-FR')}</span>
@@ -207,7 +207,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>PASSIF CIRCULANT (Classe 4)</span>
                   <span className="font-tabular font-black">{debts4.toLocaleString('fr-FR')}</span>
                 </div>
-                <div className="pl-3 pt-1.5 text-[11px] text-[#7C709A] flex justify-between">
+                <div className="pl-3 pt-1.5 text-[12px] text-[#7C709A] flex justify-between">
                   <span>Fournisseurs d'exploitation et dettes fiscales (Compte 40)</span>
                   <span className="font-tabular font-mono text-[#1E084A]">{debts4.toLocaleString('fr-FR')}</span>
                 </div>
@@ -219,7 +219,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
                   <span>TRÉSORERIE - PASSIF (Classe 5)</span>
                   <span className="font-tabular font-black">0</span>
                 </div>
-                <div className="pl-3 pt-1.5 text-[11px] text-[#7C709A] flex justify-between">
+                <div className="pl-3 pt-1.5 text-[12px] text-[#7C709A] flex justify-between">
                   <span>Crédits d'escompte & découverts bancaires</span>
                   <span className="font-tabular font-mono text-[#1E084A]">0</span>
                 </div>
@@ -243,7 +243,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
               <h4 className="font-heading text-base font-bold">
                 Compte de Résultat SYSCOHADA Révisé (Soldes Intermédiaires de Gestion)
               </h4>
-              <p className="text-[10px] text-[#C4B5FD] mt-0.5">
+              <p className="text-[11px] text-[#C4B5FD] mt-0.5">
                 Formation du résultat d'exploitation et de la valeur ajoutée
               </p>
             </div>
@@ -255,7 +255,7 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
           <div className="p-5 overflow-x-auto">
             <table className="w-full text-xs border-collapse font-sans">
               <thead>
-                <tr className="border-b border-[#DDD6FE] font-mono text-[11px] uppercase text-[#7C709A]">
+                <tr className="border-b border-[#DDD6FE] font-mono text-[12px] uppercase text-[#7C709A]">
                   <th className="py-2.5 text-left">Rubriques Comptables SYSCOHADA</th>
                   <th className="py-2.5 text-left">Postes & Comptes</th>
                   <th className="py-2.5 text-right">Montant (FCFA)</th>

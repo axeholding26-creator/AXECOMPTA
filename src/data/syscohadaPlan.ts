@@ -15,6 +15,11 @@ export const SYSCOHADA_ACCOUNTS: SYSCOHADAAccount[] = [
   { code: '245', label: 'Mobilier de bureau et étals', classNumber: 2, category: 'bilan_actif' },
   
   // Classe 3 : Stocks
+  { code: '2815', label: 'Amortissements du matériel de transport', classNumber: 2, category: 'bilan_actif' },
+  { code: '2841', label: 'Amortissements du matériel et outillage', classNumber: 2, category: 'bilan_actif' },
+  { code: '2844', label: 'Amortissements du matériel de bureau et informatique', classNumber: 2, category: 'bilan_actif' },
+  { code: '2845', label: 'Amortissements du mobilier de bureau et étals', classNumber: 2, category: 'bilan_actif' },
+
   { code: '311', label: 'Marchandises (stocks généraux)', classNumber: 3, category: 'bilan_actif' },
   { code: '321', label: 'Matières premières et fournitures liées', classNumber: 3, category: 'bilan_actif' },
   
@@ -27,12 +32,14 @@ export const SYSCOHADA_ACCOUNTS: SYSCOHADAAccount[] = [
   { code: '4452', label: 'État, TVA déductible sur achats et services (18%)', classNumber: 4, category: 'bilan_actif' },
   { code: '4441', label: 'État, TVA due / à décaisser', classNumber: 4, category: 'bilan_passif' },
   { code: '4471', label: 'État, Impôts sur les bénéfices & acomptes', classNumber: 4, category: 'bilan_passif' },
+  { code: '4711', label: 'Compte d’attente créditeur/débiteur', classNumber: 4, category: 'bilan_actif' },
 
   // Classe 5 : Trésorerie
   { code: '5211', label: 'Banque locale (Ecobank, Coris, SG, UBA)', classNumber: 5, category: 'tresorerie' },
   { code: '5261', label: 'Portefeuille Orange Money Entreprise', classNumber: 5, category: 'tresorerie' },
   { code: '5262', label: 'Portefeuille MTN Mobile Money', classNumber: 5, category: 'tresorerie' },
   { code: '5263', label: 'Portefeuille Wave Business', classNumber: 5, category: 'tresorerie' },
+  { code: '5264', label: 'Portefeuille Moov Money', classNumber: 5, category: 'tresorerie' },
   { code: '5711', label: 'Caisse principale (espèces)', classNumber: 5, category: 'tresorerie' },
   { code: '5721', label: 'Caisse magasin / point de vente', classNumber: 5, category: 'tresorerie' },
 
@@ -49,6 +56,7 @@ export const SYSCOHADA_ACCOUNTS: SYSCOHADAAccount[] = [
   { code: '6311', label: 'Frais bancaires et commissions Mobile Money', classNumber: 6, category: 'charge' },
   { code: '6411', label: 'Salaires et émoluments des employés', classNumber: 6, category: 'charge' },
   { code: '6451', label: 'Charges sociales patronales', classNumber: 6, category: 'charge' },
+  { code: '6811', label: 'Dotations aux amortissements d’exploitation', classNumber: 6, category: 'charge' },
   { code: '6581', label: 'Frais divers de gestion courante', classNumber: 6, category: 'charge' },
 
   // Classe 7 : Produits des Activités Ordinaires
