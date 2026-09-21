@@ -2,9 +2,20 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET manquant dans les variables d\'environnement.');
+/**
+ * Résolu à l'usage (pas au chargement du module) : sur une fonction serverless,
+ * une exception levée au chargement d'un module fait planter tout le processus
+ * (toutes les routes, y compris /api/health), sans message exploitable côté
+ * client. En la déportant ici, seule une requête touchant réellement l'auth
+ * échoue si la variable est absente, et l'erreur remonte proprement via le
+ * gestionnaire d'erreurs Express.
+ */
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET manquant dans les variables d\'environnement.');
+  }
+  return secret;
 }
 
 export const COOKIE_NAME = 'axecompta_session';
@@ -31,12 +42,12 @@ export function verifyPassword(password: string, hash: string) {
 }
 
 export function signToken(payload: AuthTokenPayload) {
-  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 export function verifyToken(token: string): AuthTokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET as string) as AuthTokenPayload;
+    return jwt.verify(token, getJwtSecret()) as AuthTokenPayload;
   } catch {
     return null;
   }
