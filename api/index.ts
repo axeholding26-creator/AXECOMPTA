@@ -4,25 +4,26 @@
 // (aucun app.listen() : Vercel appelle directement l'export par défaut à chaque
 // requête). Les fichiers statiques (dist/) sont servis séparément par le CDN
 // Vercel — voir vercel.json, qui redirige uniquement /api/* vers cette fonction.
-//
-// Import STATIQUE (et non dynamique) : c'est nécessaire pour que le bundler de
-// Vercel embarque correctement server/app.ts dans le paquet de la fonction.
-// Un `await import(...)` dynamique est traité comme un point de code-splitting
-// et le fichier importé n'est alors pas inclus dans le déploiement, ce qui
-// provoque un "Cannot find module" au runtime.
 import type { IncomingMessage, ServerResponse } from 'http';
-import { app, ensureSeeded } from '../server/app';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
+    // Import dynamique : si un module plante à l'initialisation, on le rattrape
+    // ici au lieu de laisser Vercel crasher toute la fonction sans détail.
+    // vercel.json (functions.api/index.ts.includeFiles) force l'inclusion de
+    // server/** dans le paquet déployé pour que cet import dynamique résolve
+    // correctement au runtime.
+    const { app, ensureSeeded } = await import('../server/app');
     await ensureSeeded();
     app(req as any, res as any);
   } catch (e: any) {
-    console.error('[AxeCompta] Erreur non interceptée dans la fonction serverless :', e);
+    console.error('[AxeCompta] Échec critique au démarrage de la fonction :', e);
     if (!res.headersSent) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ error: 'Erreur interne du serveur.' }));
+      // TEMPORAIRE (diagnostic de déploiement) : message d'erreur exposé pour
+      // débloquer le déploiement initial. À retirer une fois l'API stabilisée.
+      res.end(JSON.stringify({ error: 'Erreur de démarrage', detail: e?.message ?? String(e) }));
     }
   }
 }
