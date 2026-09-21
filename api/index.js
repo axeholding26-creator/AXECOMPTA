@@ -2851,6 +2851,32 @@ router9.get("/users", async (_req, res, next) => {
     next(e);
   }
 });
+router9.post("/users", async (req, res, next) => {
+  try {
+    const { email, name, password, role } = req.body ?? {};
+    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Email invalide." });
+    }
+    if (typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ error: "Nom requis." });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caract\xE8res." });
+    }
+    if (!ROLES.includes(role)) {
+      return res.status(400).json({ error: "R\xF4le invalide." });
+    }
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: "Un compte existe d\xE9j\xE0 avec cet email." });
+    }
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({ data: { email, name: name.trim(), passwordHash, role } });
+    res.status(201).json(serializeUser2(user));
+  } catch (e) {
+    next(e);
+  }
+});
 router9.post("/users/:id/role", async (req, res, next) => {
   try {
     const id = validId(req.params.id);

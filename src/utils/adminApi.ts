@@ -25,8 +25,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface NewUserInput {
+  email: string;
+  name: string;
+  password: string;
+  role: ManagedUser['role'];
+}
+
 export const adminApi = {
   listUsers: () => request<ManagedUser[]>('/users'),
+  createUser: (data: NewUserInput) =>
+    request<ManagedUser>('/users', { method: 'POST', body: JSON.stringify(data) }),
   updateRole: (id: string, role: ManagedUser['role']) =>
     request<ManagedUser>(`/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
   deleteUser: (id: string) => request<void>(`/users/${id}/delete`, { method: 'POST' }),

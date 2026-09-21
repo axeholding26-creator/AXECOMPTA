@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Trash2, ArrowLeft, LogOut } from 'lucide-react';
+import { ShieldCheck, Trash2, ArrowLeft, LogOut, UserPlus, X } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { CurrentUser, authApi } from '../utils/authApi';
-import { adminApi, ManagedUser } from '../utils/adminApi';
+import { adminApi, ManagedUser, NewUserInput } from '../utils/adminApi';
 
 interface AdminPageProps {
   currentUser: CurrentUser;
@@ -15,10 +15,17 @@ const roleLabel: Record<ManagedUser['role'], string> = {
   LECTURE_SEULE: 'Lecture seule',
 };
 
+const emptyNewUser: NewUserInput = { email: '', name: '', password: '', role: 'COMPTABLE' };
+
 export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) => {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [newUser, setNewUser] = useState<NewUserInput>(emptyNewUser);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const load = () => {
     adminApi.listUsers()
@@ -28,6 +35,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) =
   };
 
   useEffect(load, []);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+    setIsCreating(true);
+    try {
+      const created = await adminApi.createUser(newUser);
+      setUsers(prev => [...prev, created]);
+      setNewUser(emptyNewUser);
+      setIsFormOpen(false);
+    } catch (e: any) {
+      setCreateError(e.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleRoleChange = async (userId: string, role: ManagedUser['role']) => {
     try {
@@ -82,14 +105,93 @@ export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) =
       </header>
 
       <main className="max-w-4xl mx-auto p-4 lg:p-8 space-y-6">
-        <div>
-          <h1 className="font-heading text-2xl font-black text-[#1E084A]">
-            Utilisateurs & Rôles
-          </h1>
-          <p className="text-sm text-[#7C709A] mt-1">
-            Gérez qui a accès à AxeCompta et avec quel niveau de permission.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-heading text-2xl font-black text-[#1E084A]">
+              Utilisateurs & Rôles
+            </h1>
+            <p className="text-sm text-[#7C709A] mt-1">
+              Gérez qui a accès à AxeCompta et avec quel niveau de permission.
+            </p>
+          </div>
+          <button
+            onClick={() => { setIsFormOpen(v => !v); setCreateError(null); }}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7024E3] hover:bg-[#5B18C4] text-white text-xs font-bold transition-colors shrink-0"
+          >
+            {isFormOpen ? <X className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+            <span>{isFormOpen ? 'Annuler' : 'Nouvel utilisateur'}</span>
+          </button>
         </div>
+
+        {isFormOpen && (
+          <form
+            onSubmit={handleCreateUser}
+            className="bg-white border border-[#DDD6FE] rounded-2xl shadow-xs p-5 space-y-4"
+          >
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-[#534674] mb-1.5">Nom complet</label>
+                <input
+                  type="text"
+                  required
+                  value={newUser.name}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full text-sm p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-lg text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
+                  placeholder="Ex. Awa Traoré"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#534674] mb-1.5">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={newUser.email}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full text-sm p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-lg text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
+                  placeholder="nom@exemple.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#534674] mb-1.5">Mot de passe provisoire</label>
+                <input
+                  type="text"
+                  required
+                  minLength={8}
+                  value={newUser.password}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full text-sm p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-lg text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
+                  placeholder="8 caractères minimum"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#534674] mb-1.5">Rôle</label>
+                <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as ManagedUser['role'] }))}
+                  className="w-full text-sm p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-lg text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
+                >
+                  {(Object.keys(roleLabel) as ManagedUser['role'][]).map(r => (
+                    <option key={r} value={r}>{roleLabel[r]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {createError && (
+              <div className="text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                {createError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="px-4 py-2.5 bg-[#7024E3] hover:bg-[#5B18C4] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors"
+            >
+              {isCreating ? 'Création…' : 'Créer le compte'}
+            </button>
+          </form>
+        )}
 
         {error && (
           <div className="text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from './db';
+import { hashPassword } from './auth';
 
 const router = Router();
 
@@ -28,6 +29,36 @@ router.get('/users', async (_req, res, next) => {
   try {
     const users = await prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
     res.json(users.map(serializeUser));
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** Création d'un compte par un administrateur, avec le rôle de son choix (y compris ADMIN). */
+router.post('/users', async (req, res, next) => {
+  try {
+    const { email, name, password, role } = req.body ?? {};
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Email invalide.' });
+    }
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Nom requis.' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères.' });
+    }
+    if (!ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Rôle invalide.' });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: 'Un compte existe déjà avec cet email.' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({ data: { email, name: name.trim(), passwordHash, role } });
+    res.status(201).json(serializeUser(user));
   } catch (e) {
     next(e);
   }
