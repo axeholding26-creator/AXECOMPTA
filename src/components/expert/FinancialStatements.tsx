@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
+import { computeFinancialReport } from '../../utils/analytics';
 import { Printer } from 'lucide-react';
 
 interface FinancialStatementsProps {
@@ -15,49 +16,33 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
 
   const validatedEntries = entries.filter(e => e.clientDossierId === activeDossier.id && e.status === 'validated');
 
-  // Aggregation of key accounts
-  let sales701 = 0;
-  let purchases601 = 0;
-  let services605_62_63 = 0;
-  let personnel66 = 0;
-  let amort68 = 30000; // standard periodic depreciation
+  // Rapport financier calculé exclusivement à partir des écritures validées (aucune valeur factice).
+  const report = computeFinancialReport(validatedEntries);
 
-  let immobilized2 = 2500000;
-  let stocks3 = 1800000;
-  let receivables4 = 850000;
-  let treasuryCashBank5 = 2390000;
+  const sales701 = report.revenue;
+  const purchases601 = report.purchases;
+  const services605_62_63 = report.services;
+  const personnel66 = report.personnel;
+  const amort68 = report.depreciation;
 
-  let capital1 = 5000000;
-  let debts4 = 1500000;
+  const immobilized2 = report.immobilisationsNettes;
+  const stocks3 = report.stocks;
+  const receivables4 = report.creances;
+  const treasuryCashBank5 = report.treasury;
 
-  validatedEntries.forEach(entry => {
-    // Products
-    if (entry.creditAccountCode.startsWith('701')) sales701 += entry.amount;
-    // Costs
-    if (entry.debitAccountCode.startsWith('601')) purchases601 += entry.amount;
-    if (entry.debitAccountCode.startsWith('605') || entry.debitAccountCode.startsWith('62') || entry.debitAccountCode.startsWith('63')) {
-      services605_62_63 += entry.amount;
-    }
-    if (entry.debitAccountCode.startsWith('66')) personnel66 += entry.amount;
-  });
+  const capital1 = report.capital;
+  const debts4 = report.dettes;
 
-  // Base adjustments if few entries exist in demo
-  if (sales701 === 0) sales701 = 2800000;
-  if (purchases601 === 0) purchases601 = 1200000;
-  if (services605_62_63 === 0) services605_62_63 = 240000;
+  const commercialMargin = report.grossMargin;
+  const addedValue = report.addedValue;
+  const ebe = report.ebe;
+  const operatingResult = report.operatingResult;
+  const corporateTax = report.corporateTax;
+  const netProfit = report.netProfit;
 
-  // Intermediate balances of management (Soldes Intermédiaires de Gestion - SYSCOHADA)
-  const commercialMargin = sales701 - purchases601;
-  const addedValue = commercialMargin - services605_62_63;
-  const ebe = addedValue - personnel66;
-  const operatingResult = ebe - amort68;
-  const corporateTax = operatingResult > 0 ? Math.round(operatingResult * 0.25) : 0;
-  const netProfit = operatingResult - corporateTax;
-
-  // Bilan equilibrium
-  const totalActif = immobilized2 + stocks3 + receivables4 + treasuryCashBank5;
-  const calculatedReserves = totalActif - (capital1 + debts4 + netProfit);
-  const totalPassif = capital1 + calculatedReserves + netProfit + debts4;
+  const totalActif = report.totalActif;
+  const calculatedReserves = Math.max(0, report.totalPassif - capital1 - netProfit - debts4);
+  const totalPassif = report.totalPassif;
 
   return (
     <div className="space-y-4">

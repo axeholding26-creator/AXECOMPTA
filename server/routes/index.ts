@@ -1,0 +1,29 @@
+import { Router } from 'express';
+import { handler } from '../http';
+import { buildBootstrapPayload } from './bootstrap';
+import dossiersRouter from './dossiers';
+import entriesRouter from './entries';
+import notificationsRouter from './notifications';
+import settingsRouter from './settings';
+import backupRouter from './backup';
+
+/**
+ * Routes applicatives AxeCompta (données comptables).
+ *
+ * Toutes les mutations sont exposées en POST avec un suffixe descriptif
+ * (/update, /delete, /read, /clear...) : aucune méthode PUT, PATCH ou DELETE
+ * n'est exposée au client, conformément à la politique de sécurité CORS.
+ */
+const router = Router();
+
+router.get('/bootstrap', handler(async (req, res) => {
+  res.json(await buildBootstrapPayload(req));
+}));
+
+router.use(dossiersRouter);
+router.use(entriesRouter);
+router.use(notificationsRouter);
+router.use(settingsRouter);
+router.use(backupRouter);
+
+export default router;

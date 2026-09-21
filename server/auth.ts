@@ -51,3 +51,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   (req as any).user = payload;
   next();
 }
+/** Utilisateur authentifié attaché à la requête par requireAuth (undefined si non connecté). */
+export function getAuthUser(req: Request): AuthTokenPayload | undefined {
+  return (req as any).user as AuthTokenPayload | undefined;
+}

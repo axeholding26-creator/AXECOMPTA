@@ -52,6 +52,10 @@ export interface SYSCOHADAAccount {
 
 export interface ClientDossier {
   id: string;
+  /** Identifiant du compte propriétaire du dossier (cloisonnement des données). */
+  ownerId: string;
+  /** Nom du propriétaire, renseigné côté serveur pour l'affichage cabinet (admin). */
+  ownerName?: string;
   name: string;
   managerName: string;
   phone: string;

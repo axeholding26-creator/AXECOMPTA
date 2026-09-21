@@ -18,6 +18,7 @@ import { FinancialStatements } from './components/expert/FinancialStatements';
 import { TaxCompliance } from './components/expert/TaxCompliance';
 import { AuditTrailModal } from './components/expert/AuditTrailModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
+import { FirstDossierSetup } from './components/onboarding/FirstDossierSetup';
 import { 
   Building2, 
   BookOpen, 
@@ -106,7 +107,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
 
   const activeDossier = dossiers.find(d => d.id === activeDossierId) || dossiers[0];
 
-  if (!isLoaded || !activeDossier) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#F8F7FD] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-[#1E084A]">
@@ -114,6 +115,18 @@ export default function App({ currentUser, onLogout }: AppProps) {
           <span className="text-sm font-bold">Chargement d'AxeCompta…</span>
         </div>
       </div>
+    );
+  }
+
+  // Compte vierge : aucun dossier. On invite l'utilisateur à créer son premier dossier,
+  // qui lui sera rattaché (aucune donnée de démonstration n'est injectée).
+  if (!activeDossier) {
+    return (
+      <FirstDossierSetup
+        currentUser={currentUser}
+        onLogout={onLogout}
+        onCreateDossier={handleCreateDossier}
+      />
     );
   }
 
@@ -276,7 +289,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
   };
 
   // Project / Dossier Management handlers
-  const handleCreateDossier = async (newDossierData: Omit<ClientDossier, 'id'>) => {
+  async function handleCreateDossier(newDossierData: Omit<ClientDossier, 'id' | 'ownerId' | 'ownerName'>): Promise<ClientDossier> {
     try {
       const newDossier = await api.createDossier(newDossierData);
       setDossiers(prev => [...prev, newDossier]);
@@ -294,11 +307,13 @@ export default function App({ currentUser, onLogout }: AppProps) {
       );
 
       showToast(`Dossier "${newDossier.name}" créé avec succès.`);
+      return newDossier;
     } catch (e) {
       console.error('Erreur lors de la création du dossier', e);
       showToast('Erreur lors de la création du dossier.');
+      throw e;
     }
-  };
+  }
 
   const handleUpdateDossier = async (updatedDossier: ClientDossier) => {
     try {
@@ -363,23 +378,6 @@ export default function App({ currentUser, onLogout }: AppProps) {
     }
   };
 
-  const handleResetAllData = async () => {
-    try {
-      const data = await api.resetAllData();
-      setDossiers(data.dossiers);
-      setActiveDossierId(data.dossiers[0]?.id || '');
-      setEntries(data.entries);
-      setNotifications(data.notifications);
-      setPlatformSettings(data.settings);
-
-      soundManager.play('fintech_chime', true);
-      showToast('Toutes les données ont été réinitialisées aux valeurs usine.');
-    } catch (e) {
-      console.error('Erreur lors de la réinitialisation', e);
-      showToast('Erreur lors de la réinitialisation des données.');
-    }
-  };
-
   const handleImportBackup = async (backupData: {
     settings?: PlatformSettings;
     dossiers?: ClientDossier[];
@@ -431,64 +429,6 @@ export default function App({ currentUser, onLogout }: AppProps) {
     api.clearAllNotifications().catch(e => console.error('Erreur de suppression des notifications', e));
   };
 
-  // Simulation generator for rapid testing with sound
-  const handleSimulateNotification = () => {
-    const testCases: Array<{
-      title: string;
-      message: string;
-      type: NotificationType;
-      category: NotificationCategory;
-      actionLabel: string;
-      actionPayload: { mode?: 'simplified' | 'expert'; expertTab?: 'portfolio' | 'journal' | 'ledger' | 'financials' | 'tax' };
-    }> = [
-      {
-        title: 'Alerte Plafond Espèces SYSCOHADA',
-        message: 'Règlement fournisseur de 720 000 FCFA détecté en caisse (compte 5711). Dépassement du seuil de déductibilité fiscale (500 000 FCFA).',
-        type: 'warning',
-        category: 'compta',
-        actionLabel: 'Régulariser par virement',
-        actionPayload: { mode: 'expert', expertTab: 'journal' }
-      },
-      {
-        title: 'Rappel Échéance Fiscale TVA',
-        message: 'La déclaration mensuelle de TVA du dossier est attendue avant le 15 du mois prochain auprès du centre des impôts.',
-        type: 'info',
-        category: 'fiscal',
-        actionLabel: 'Vérifier la déclaration',
-        actionPayload: { mode: 'expert', expertTab: 'tax' }
-      },
-      {
-        title: 'Encaissement Mobile Money reçu',
-        message: 'Un paiement Wave de 145 000 FCFA a été automatiquement imputé au compte 5263 (Wave Business) pour la vente de quincaillerie.',
-        type: 'success',
-        category: 'tresorerie',
-        actionLabel: 'Voir le solde trésorerie',
-        actionPayload: { mode: 'simplified' }
-      },
-      {
-        title: 'Optimisation Fiscale Recommandée',
-        message: 'Le solde de TVA déductible sur immobilisations (432 000 FCFA) génère un crédit de taxe reportable sur le prochain trimestre.',
-        type: 'info',
-        category: 'ia',
-        actionLabel: 'Consulter le bilan',
-        actionPayload: { mode: 'expert', expertTab: 'financials' }
-      }
-    ];
-
-    const randomItem = testCases[Math.floor(Math.random() * testCases.length)];
-    pushNotification(
-      randomItem.title,
-      randomItem.message,
-      randomItem.type,
-      randomItem.category,
-      {
-        actionLabel: randomItem.actionLabel,
-        actionPayload: randomItem.actionPayload,
-        playSound: true
-      }
-    );
-  };
-
   return (
     <div className="min-h-screen bg-[#F8F7FD] text-[#1E084A] flex flex-col font-sans selection:bg-[#7024E3] selection:text-white">
       {/* Toast Notification */}
@@ -538,6 +478,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
             <div className="max-w-4xl mx-auto">
               <ConversationalAgent
                 activeDossier={activeDossier}
+                userName={currentUser.name}
                 onNewEntry={handleNewEntry}
                 recentEntries={activeEntries}
                 onOpenExcelImport={() => setIsExcelImportOpen(true)}
@@ -640,6 +581,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
                   setExpertTab('journal');
                 }}
                 onUpdateConfidenceThreshold={handleUpdateConfidenceThreshold}
+                groupByOwner={currentUser.role === 'ADMIN'}
               />
             )}
 
@@ -742,9 +684,8 @@ export default function App({ currentUser, onLogout }: AppProps) {
         onClearAll={handleClearAllNotifications}
         onNavigateAction={(payload) => {
           if (payload.mode) setCurrentMode(payload.mode);
-          if (payload.expertTab) setExpertTab(payload.expertTab);
+          if (payload.expertTab) setExpertTab(payload.expertTab as typeof expertTab);
         }}
-        onAddSimulatedNotification={handleSimulateNotification}
       />
 
       {/* Platform & Project Settings Modal */}
@@ -760,7 +701,6 @@ export default function App({ currentUser, onLogout }: AppProps) {
         onUpdateDossier={handleUpdateDossier}
         onDeleteDossier={handleDeleteDossier}
         entries={entries}
-        onResetAllData={handleResetAllData}
         onImportBackup={handleImportBackup}
       />
     </div>

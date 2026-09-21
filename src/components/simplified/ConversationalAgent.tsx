@@ -26,6 +26,8 @@ import { soundManager } from '../../utils/sound';
 
 interface ConversationalAgentProps {
   activeDossier: ClientDossier;
+  /** Nom du compte connecté, utilisé pour la salutation de l'agent. */
+  userName?: string;
   /** Enregistre l'écriture ; retourne false si l'enregistrement a échoué. */
   onNewEntry: (entry: JournalEntry) => void | boolean | Promise<void | boolean>;
   recentEntries: JournalEntry[];
@@ -43,6 +45,18 @@ interface MessageItem {
   photoUrl?: string;
   documentName?: string;
   quickActions?: string[];
+}
+
+/** Salutation de l'agent : utilise le nom du compte connecté, jamais celui du gérant du dossier. */
+function buildGreetingMessage(dossier: ClientDossier, displayName?: string): MessageItem {
+  const who = (displayName && displayName.trim()) || dossier.managerName;
+  return {
+    id: `msg-init-${dossier.id}`,
+    sender: 'agent',
+    time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    text: `Bonjour ${who} ! Je suis votre agent AxeCompta. Qu'avez-vous vendu ou acheté aujourd'hui pour ${dossier.name} ? Dites-moi aussi comment c'était payé (espèces, chèque, virement, Orange Money, MTN, Wave, Moov) : j'enregistre dans le bon compte. Vous pouvez écrire, parler, coller un SMS Mobile Money, photographier un reçu ou me poser une question sur vos chiffres.`,
+    quickActions: ["Combien j'ai en caisse ?", 'Mes ventes du mois', "Qui me doit de l'argent ?"]
+  };
 }
 
 type UploadedDocument = { data: string; mimeType: string };
@@ -86,7 +100,8 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
   activeDossier,
   onNewEntry,
   recentEntries,
-  onOpenExcelImport
+  onOpenExcelImport,
+  userName
 }) => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -100,19 +115,15 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initial conversational messages
-  const greetingTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const [messages, setMessages] = useState<MessageItem[]>([
-    {
-      id: 'msg-init-1',
-      sender: 'agent',
-      time: greetingTime,
-      text: `Bonjour M. ${activeDossier.managerName} ! Je suis votre agent AxeCompta. Qu'avez-vous vendu ou acheté aujourd'hui pour ${activeDossier.name} ? Dites-moi aussi comment c'était payé (espèces, chèque, virement, Orange Money, MTN, Wave, Moov) : j'enregistre dans le bon compte. Vous pouvez écrire, parler, coller un SMS Mobile Money, photographier un reçu ou me poser une question sur vos chiffres.`,
-      quickActions: ["Combien j'ai en caisse ?", 'Mes ventes du mois', "Qui me doit de l'argent ?"]
-    }
-  ]);
+  const [messages, setMessages] = useState<MessageItem[]>(() => [buildGreetingMessage(activeDossier, userName)]);
   // Message en attente de précision (ex : montant manquant) : la réponse suivante le complète
   const [pendingText, setPendingText] = useState<string | undefined>();
+
+  // La salutation suit l'utilisateur connecté et le dossier actif : elle est reconstruite à chaque changement.
+  useEffect(() => {
+    setMessages(prev => [buildGreetingMessage(activeDossier, userName), ...prev.filter(m => !m.id.startsWith('msg-init'))]);
+    setPendingText(undefined);
+  }, [activeDossier.id, userName]);
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -255,7 +266,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-220px)] min-h-[560px] max-h-[840px] bg-white border border-[#DDD6FE] rounded-2xl shadow-xs overflow-hidden">
+    <div className="flex flex-col w-full min-w-0 h-[calc(100vh-220px)] min-h-[560px] max-h-[840px] bg-white border border-[#DDD6FE] rounded-2xl shadow-xs overflow-hidden">
       {/* Top Bar: Conversational WhatsApp-like Header */}
       <div className="bg-[#1E084A] text-white px-5 py-3.5 border-b border-[#3B1578] flex flex-col gap-3">
         <div className="flex items-center gap-3">
@@ -339,17 +350,17 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
       {/* Main Conversation Feed */}
       <div 
         ref={chatScrollRef}
-        className="flex-1 p-5 overflow-y-auto space-y-4 bg-brand-mesh"
+        className="flex-1 min-w-0 p-5 overflow-y-auto overflow-x-hidden space-y-4 bg-brand-mesh"
       >
         {messages.map((msg) => {
           const isAgent = msg.sender === 'agent';
           return (
             <div
               key={msg.id}
-              className={`flex flex-col ${isAgent ? 'items-start' : 'items-end'}`}
+              className={`flex flex-col w-full min-w-0 ${isAgent ? 'items-start' : 'items-end'}`}
             >
               <div
-                className={`max-w-[85%] md:max-w-[78%] p-4 text-sm ${
+                className={`max-w-[85%] md:max-w-[78%] min-w-0 overflow-hidden break-words p-4 text-sm ${
                   isAgent
                     ? 'bg-gradient-to-br from-[#1E084A] to-[#2E1065] text-white rounded-bubble-agent border border-[#3B1578] shadow-xs'
                     : 'bg-white text-[#1E084A] rounded-bubble-user border border-[#DDD6FE] shadow-2xs'
@@ -393,13 +404,13 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                 )}
 
                 {msg.documentName && (
-                  <div className="mb-2.5 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-[12px] flex items-center gap-2">
+                  <div className="mb-2.5 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-[12px] flex items-center gap-2 min-w-0">
                     <FileText className="w-4 h-4 shrink-0" />
                     <span className="truncate">{msg.documentName}</span>
                   </div>
                 )}
 
-                <p className="leading-relaxed font-normal whitespace-pre-line">{msg.text}</p>
+                <p className="leading-relaxed font-normal whitespace-pre-line break-words [overflow-wrap:anywhere]">{msg.text}</p>
 
                 {/* Generated SYSCOHADA Entry Card if present */}
                 {(msg.entries ?? []).map(entry => (
@@ -449,7 +460,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                       </button>
 
                       {showTechnicalSYSCOHADA[msg.id + entry.id] && (
-                        <div className="mt-2 p-2.5 bg-[#130432] text-white rounded-lg font-mono text-[11px] space-y-1.5 border border-[#3B1578]">
+                        <div className="mt-2 p-2.5 bg-[#130432] text-white rounded-lg font-mono text-[11px] space-y-1.5 border border-[#3B1578] overflow-hidden break-words">
                           <div className="flex justify-between">
                             <span className="text-[#A78BFA] font-bold">Débit : {entry.debitAccount}</span>
                             <span className="text-[#10B981] font-bold">{entry.amount.toLocaleString('fr-FR')} F</span>
@@ -592,7 +603,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
       )}
 
       {/* Preset Quick Chips */}
-      <div className="px-4 py-2.5 bg-[#F5F3FF] border-t border-[#EDE9FE] flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+      <div className="px-4 py-2.5 bg-[#F5F3FF] border-t border-[#EDE9FE] flex items-center gap-2 overflow-x-auto whitespace-nowrap max-w-full min-w-0">
         <span className="text-[11px] uppercase font-bold text-[#7C709A] shrink-0">
           Exemples :
         </span>
@@ -649,7 +660,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
         </button>
 
         {speech.isListening ? (
-          <div className="flex-1 px-3.5 py-2 bg-gradient-to-r from-[#1E084A] to-[#2E1065] border border-[#3B1578] text-white rounded-xl text-xs flex items-center justify-between gap-2 shadow-inner">
+          <div className="flex-1 min-w-0 px-3.5 py-2 bg-gradient-to-r from-[#1E084A] to-[#2E1065] border border-[#3B1578] text-white rounded-xl text-xs flex items-center justify-between gap-2 shadow-inner">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] animate-ping shrink-0" />
               <div className="flex items-center gap-1 shrink-0">

@@ -31,7 +31,6 @@ interface NotificationPanelProps {
   onDeleteNotification: (id: string) => void;
   onClearAll: () => void;
   onNavigateAction?: (payload: { mode?: 'simplified' | 'expert'; expertTab?: string }) => void;
-  onAddSimulatedNotification?: () => void;
 }
 
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({
@@ -42,8 +41,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   onMarkAllAsRead,
   onDeleteNotification,
   onClearAll,
-  onNavigateAction,
-  onAddSimulatedNotification
+  onNavigateAction
 }) => {
   const { isDark } = useTheme();
   const [filter, setFilter] = useState<'all' | 'unread' | 'alerts' | 'fiscal'>('all');
@@ -463,17 +461,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {onAddSimulatedNotification && (
-              <button
-                onClick={onAddSimulatedNotification}
-                className="px-2.5 py-1 bg-white dark:bg-[#2A164F] border border-[#DDD6FE] dark:border-[#3D216D] hover:border-[#7024E3] text-[#7024E3] dark:text-[#C4B5FD] text-[12px] font-bold rounded-lg transition-all shadow-2xs hover:shadow-xs flex items-center gap-1.5"
-                title="Générer une notification de test avec le son par défaut"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Simuler une alerte (Test son)</span>
-              </button>
-            )}
-
             {notifications.length > 0 && (
               <button
                 onClick={onClearAll}

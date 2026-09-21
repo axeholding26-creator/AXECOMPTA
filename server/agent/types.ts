@@ -64,4 +64,6 @@ export interface AgentRequestContext {
   settings: PlatformSettings;
   entries: JournalEntry[];
   now: Date;
+  /** Nom affiché de l'utilisateur connecté (salutation de l'agent). */
+  userName: string;
 }

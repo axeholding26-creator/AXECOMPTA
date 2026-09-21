@@ -107,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="absolute left-0 mt-1.5 w-80 bg-white dark:bg-[#180D33] border border-[#DDD6FE] dark:border-[#35225E] shadow-xl z-50 rounded-xl py-1 overflow-hidden">
                 <div className="px-3.5 py-2 border-b border-[#EDE9FE] dark:border-[#2D1A54] bg-[#F8F7FD] dark:bg-[#140A28]">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#7024E3] dark:text-[#C4B5FD]">
-                    Portefeuille Cabinet KM Consulting
+                    {currentUser?.role === 'ADMIN' ? 'Tous les dossiers (administrateur)' : 'Mes dossiers'}
                   </span>
                 </div>
                 {dossiers.map(d => {
@@ -134,6 +134,9 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                       <span className="text-[12px] text-[#534674] dark:text-[#A594C9] truncate mt-0.5">{d.activity}</span>
                       <span className="text-[10px] text-[#7C709A] dark:text-[#8E7BB8] font-mono mt-0.5">RCCM: {d.rccm}</span>
+                      {d.ownerName && currentUser?.role === 'ADMIN' && (
+                        <span className="text-[10px] text-[#7024E3] dark:text-[#C4B5FD] font-bold mt-0.5">Propriétaire : {d.ownerName}</span>
+                      )}
                     </button>
                   );
                 })}

@@ -22,7 +22,7 @@ import {
   ShieldCheck, 
   Download, 
   Upload, 
-  RotateCcw, 
+   
   AlertTriangle, 
   CheckCircle2, 
   Layers, 
@@ -45,11 +45,10 @@ interface SettingsModalProps {
   entries: JournalEntry[];
   settings: PlatformSettings;
   onUpdateSettings: (newSettings: PlatformSettings) => void;
-  onCreateDossier: (dossierData: Omit<ClientDossier, 'id'>) => void;
+  onCreateDossier: (dossierData: Omit<ClientDossier, 'id' | 'ownerId' | 'ownerName'>) => void;
   onUpdateDossier: (updatedDossier: ClientDossier) => void;
   onDeleteDossier: (dossierId: string) => void;
   onSelectDossier: (dossier: ClientDossier) => void;
-  onResetAllData?: () => void;
   onImportBackup?: (backupData: { dossiers: ClientDossier[]; entries: JournalEntry[]; settings: PlatformSettings }) => void;
 }
 
@@ -65,7 +64,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateDossier,
   onDeleteDossier,
   onSelectDossier,
-  onResetAllData,
   onImportBackup
 }) => {
   const { isDark } = useTheme();
@@ -81,7 +79,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [editingDossierId, setEditingDossierId] = useState<string | null>(null);
   
   // Dossier Form Fields
-  const [formData, setFormData] = useState<Omit<ClientDossier, 'id'>>({
+  const [formData, setFormData] = useState<Omit<ClientDossier, 'id' | 'ownerId' | 'ownerName'>>({
     name: '',
     managerName: '',
     phone: '',
@@ -160,9 +158,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
 
     if (editingDossierId) {
+      const existing = dossiers.find(d => d.id === editingDossierId);
       onUpdateDossier({
         ...formData,
-        id: editingDossierId
+        id: editingDossierId,
+        ownerId: existing?.ownerId ?? '',
+        ownerName: existing?.ownerName
       });
       showFeedback(`Projet "${formData.name}" mis à jour avec succès.`);
     } else {
@@ -176,11 +177,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Confirm Delete Dossier
   const handleConfirmDeleteDossier = () => {
     if (!dossierToDelete) return;
-    if (dossiers.length <= 1) {
-      alert('Action impossible : vous devez conserver au moins un projet / dossier comptable.');
-      setDossierToDelete(null);
-      return;
-    }
 
     const name = dossierToDelete.name;
     onDeleteDossier(dossierToDelete.id);
@@ -191,10 +187,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Duplicate Dossier
   const handleDuplicateDossier = (dossier: ClientDossier) => {
     onCreateDossier({
-      ...dossier,
       name: `${dossier.name} (Copie)`,
+      managerName: dossier.managerName,
+      phone: dossier.phone,
+      activity: dossier.activity,
+      city: dossier.city,
+      country: dossier.country,
       rccm: `${dossier.rccm}-DUP`,
-      ifu: `${dossier.ifu}-DUP`
+      ifu: `${dossier.ifu}-DUP`,
+      regimeFiscal: dossier.regimeFiscal,
+      confidenceThreshold: dossier.confidenceThreshold,
+      currency: dossier.currency
     });
     showFeedback(`Projet dupliqué avec succès.`);
   };
@@ -1129,33 +1132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Reset to Default Demo Data */}
-                {onResetAllData && (
-                  <div className="p-5 rounded-xl border border-[#FEE2E2] dark:border-[#4B1924] bg-[#FEF2F2] dark:bg-[#2D0F18] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-[#EF4444] flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span>Zone de Réinitialisation Démo</span>
-                      </h4>
-                      <p className="text-xs text-[#7F1D1D] dark:text-[#FECDD3]">
-                        Restaurer les projets et écritures comptables modèles de démonstration (Quincaillerie Moderne, Boutique Fanta, Atelier Moussa).
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        if (confirm("Êtes-vous sûr de vouloir réinitialiser les données de démonstration OHADA ? Toutes vos modifications locales seront écrasées.")) {
-                          onResetAllData();
-                          showFeedback("Données de démonstration réinitialisées.");
-                        }
-                      }}
-                      className="px-4 py-2 bg-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold rounded-xl transition-colors shrink-0 flex items-center gap-1.5"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      <span>Réinitialiser les données</span>
-                    </button>
-                  </div>
-                )}
+                {/* Demo retirée */}
               </div>
             )}
           </div>

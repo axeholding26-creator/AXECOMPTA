@@ -1,10 +1,17 @@
 import type { PrismaClient } from '@prisma/client';
 import { SYSCOHADA_ACCOUNTS } from '../src/data/syscohadaPlan';
-import { INITIAL_CLIENT_DOSSIERS, INITIAL_JOURNAL_ENTRIES } from '../src/data/mockData';
-import { INITIAL_NOTIFICATIONS } from '../src/data/initialNotifications';
 import { DEFAULT_PLATFORM_SETTINGS } from '../src/data/initialSettings';
-import { REGIME_FISCAL_TO_DB, AI_MODEL_TO_DB } from './mappers';
+import { AI_MODEL_TO_DB } from './mappers';
 
+/**
+ * Initialisation du socle technique uniquement.
+ *
+ * Aucune donnée comptable de démonstration n'est créée : chaque utilisateur démarre
+ * avec un compte vierge et crée lui-même ses dossiers et ses écritures.
+ * Seuls le plan comptable SYSCOHADA et les réglages par défaut sont garantis.
+ */
+
+/** Garantit la présence de tous les comptes du plan SYSCOHADA (référentiel partagé, non cloisonné). */
 export async function ensureSyscohadaAccounts(prisma: PrismaClient) {
   for (const acc of SYSCOHADA_ACCOUNTS) {
     await prisma.syscohadaAccount.upsert({
@@ -15,82 +22,7 @@ export async function ensureSyscohadaAccounts(prisma: PrismaClient) {
   }
 }
 
-export async function createDemoDossiers(prisma: PrismaClient) {
-  for (const d of INITIAL_CLIENT_DOSSIERS) {
-    await prisma.clientDossier.create({
-      data: {
-        id: d.id,
-        name: d.name,
-        managerName: d.managerName,
-        phone: d.phone,
-        activity: d.activity,
-        city: d.city,
-        country: d.country,
-        rccm: d.rccm,
-        ifu: d.ifu,
-        regimeFiscal: REGIME_FISCAL_TO_DB[d.regimeFiscal] as any,
-        confidenceThreshold: d.confidenceThreshold,
-        currency: d.currency,
-      },
-    });
-  }
-}
-
-export async function createDemoEntries(prisma: PrismaClient) {
-  for (const e of INITIAL_JOURNAL_ENTRIES) {
-    await prisma.journalEntry.create({
-      data: {
-        id: e.id,
-        date: new Date(e.date),
-        label: e.label,
-        pieceRef: e.pieceRef,
-        debitAccountCode: e.debitAccountCode,
-        creditAccountCode: e.creditAccountCode,
-        amount: e.amount,
-        tvaAmount: e.tvaAmount,
-        clientDossierId: e.clientDossierId,
-        status: e.status as any,
-        confidenceScore: e.confidenceScore,
-        detectedAnomaly: e.detectedAnomaly,
-        rawInput: e.rawInput,
-        inputType: e.inputType as any,
-        explanationSimplified: e.explanationSimplified,
-        paymentMethod: e.paymentMethod as any,
-        auditTrail: {
-          create: e.auditTrail.map((a) => ({
-            id: a.id,
-            timestamp: new Date(a.timestamp),
-            action: a.action as any,
-            author: a.author,
-            notes: a.notes,
-            previousValue: a.previousValue,
-            confidenceScore: a.confidenceScore,
-          })),
-        },
-      },
-    });
-  }
-}
-
-export async function createDemoNotifications(prisma: PrismaClient) {
-  for (const n of INITIAL_NOTIFICATIONS) {
-    await prisma.appNotification.create({
-      data: {
-        id: n.id,
-        title: n.title,
-        message: n.message,
-        type: n.type as any,
-        category: n.category as any,
-        read: n.read,
-        dossierId: n.dossierId,
-        actionLabel: n.actionLabel,
-        actionMode: n.actionPayload?.mode as any,
-        actionExpertTab: n.actionPayload?.expertTab,
-      },
-    });
-  }
-}
-
+/** Crée la ligne unique de réglages de la plateforme avec les valeurs par défaut. */
 export async function createDefaultPlatformSettings(prisma: PrismaClient) {
   return prisma.platformSettings.create({
     data: {
@@ -119,15 +51,13 @@ export async function createDefaultPlatformSettings(prisma: PrismaClient) {
   });
 }
 
-/** Vide entièrement les données applicatives (hors plan comptable) et recrée le jeu de démonstration. */
-export async function resetToDemoData(prisma: PrismaClient) {
+/**
+ * Purge les données applicatives héritées (dossiers, écritures, notifications)
+ * laissées par les anciennes versions de développement du projet.
+ * Ne touche ni aux utilisateurs, ni au plan comptable, ni aux réglages.
+ */
+export async function purgeLegacyDemoData(prisma: PrismaClient) {
   await prisma.appNotification.deleteMany();
   await prisma.journalEntry.deleteMany(); // cascade sur audit_logs
   await prisma.clientDossier.deleteMany();
-  await prisma.platformSettings.deleteMany();
-
-  await createDemoDossiers(prisma);
-  await createDemoEntries(prisma);
-  await createDemoNotifications(prisma);
-  await createDefaultPlatformSettings(prisma);
 }

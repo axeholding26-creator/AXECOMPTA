@@ -11,9 +11,9 @@ import * as gemini from './agent/gemini';
 import { analyzeWithGemini, getGenAI, modelFromSettings } from './agent/gemini';
 import { isGreeting, isQuestion, parseWithHeuristics } from './agent/heuristic';
 import type { AgentRequestContext, ParseOutcome } from './agent/types';
+import { getAuthUser } from './auth';
 
 const router = Router();
-
 const ENTRY_INCLUDE = { auditTrail: true, debitAccount: true, creditAccount: true } as const;
 const INPUT_MODES: InputMode[] = ['text', 'voice', 'photo', 'mobile_money', 'manual', 'excel_import'];
 const ALLOWED_DOCUMENT_TYPES = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
@@ -22,18 +22,39 @@ function handler(fn: (req: Request, res: Response) => Promise<any>) {
   return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 }
 
-async function loadContext(dossierId: string): Promise<AgentRequestContext | null> {
-  const [dossierRow, entryRows, settingsRow] = await Promise.all([
-    prisma.clientDossier.findUnique({ where: { id: dossierId } }),
-    prisma.journalEntry.findMany({ where: { clientDossierId: dossierId }, include: ENTRY_INCLUDE, orderBy: { date: 'desc' }, take: 2000 }),
-    prisma.platformSettings.findFirst(),
-  ]);
+/**
+ * Charge le contexte d'un dossier pour l'agent, en vérifiant au préalable que
+ * l'utilisateur en session y a accès (propriétaire, ou administrateur).
+ * Retourne null si le dossier est inexistant ou hors périmètre (réponse 404).
+ */
+async function loadContext(req: Request, dossierId: string): Promise<AgentRequestContext | null> {
+  const user = getAuthUser(req);
+  if (!user) return null;
+
+  const dossierRow = await prisma.clientDossier.findUnique({
+    where: { id: dossierId },
+    include: { owner: { select: { name: true } } },
+  });
   if (!dossierRow) return null;
+  if (user.role !== 'ADMIN' && dossierRow.ownerId !== user.sub) return null;
+
+  const [entryRows, settingsRow, userRow] = await Promise.all([
+    prisma.journalEntry.findMany({
+      where: { clientDossierId: dossierId },
+      include: ENTRY_INCLUDE,
+      orderBy: { date: 'desc' },
+      take: 2000,
+    }),
+    prisma.platformSettings.findFirst(),
+    prisma.user.findUnique({ where: { id: user.sub }, select: { name: true } }),
+  ]);
+
   return {
     dossier: serializeDossier(dossierRow),
     entries: entryRows.map(serializeEntry),
     settings: settingsRow ? serializePlatformSettings(settingsRow) : DEFAULT_PLATFORM_SETTINGS,
     now: new Date(),
+    userName: userRow?.name ?? '',
   };
 }
 
@@ -55,7 +76,7 @@ function reviewNote(entries: JournalEntry[]): string {
 // Discussion avec l'agent : comprend une opération, une question, ou demande une précision.
 router.post('/chat', handler(async (req, res) => {
   const { dossierId, message = '', inputType = 'text', pendingText, image } = req.body ?? {};
-  if (typeof dossierId !== 'string' || (!message.trim() && !image)) {
+  if (typeof dossierId !== 'string' || (!String(message).trim() && !image)) {
     return res.status(400).json({ error: 'Dossier et message requis.' });
   }
   const mode: InputMode = INPUT_MODES.includes(inputType) ? inputType : 'text';
@@ -66,20 +87,24 @@ router.post('/chat', handler(async (req, res) => {
     if (!ALLOWED_DOCUMENT_TYPES.test(mimeType) || typeof image.data !== 'string') {
       return res.status(400).json({ error: 'Format de document non pris en charge (JPEG, PNG, WebP ou PDF).' });
     }
+    if (image.data.length > 12_000_000) {
+      return res.status(413).json({ error: 'Document trop volumineux.' });
+    }
     imagePayload = { data: image.data.replace(/^data:[^;]+;base64,/, ''), mimeType };
   }
 
-  const ctx = await loadContext(dossierId);
+  const ctx = await loadContext(req, dossierId);
   if (!ctx) return res.status(404).json({ error: 'Dossier introuvable.' });
 
-  const user = (req as any).user as { role?: string } | undefined;
+  const user = getAuthUser(req);
   const canWrite = user?.role !== 'LECTURE_SEULE';
+
   // La réponse à une demande de précision complète le message précédent ; une question ou un bonjour, non.
   const isFollowUp = typeof pendingText === 'string' && pendingText && !isQuestion(message) && !isGreeting(message);
   const text: string = isFollowUp ? `${pendingText} ${message}`.trim() : String(message).trim();
+
   const analytics = buildAgentContext(ctx.entries, ctx.now);
   const model = modelFromSettings(ctx.settings);
-
   let outcome: ParseOutcome | null = null;
   let source = 'moteur-de-regles';
 
@@ -100,9 +125,15 @@ router.post('/chat', handler(async (req, res) => {
         source,
       });
     }
-    if (isGreeting(text)) outcome = { intent: 'chitchat', operations: [], reply: greetingReply(ctx.dossier, text) };
+    if (isGreeting(text)) outcome = { intent: 'chitchat', operations: [], reply: greetingReply(ctx.dossier, text, ctx.userName) };
     else if (isQuestion(text)) outcome = { intent: 'question', operations: [], reply: answerQuestion(text, analytics, ctx.dossier, ctx.settings) };
     else outcome = parseWithHeuristics(text, mode, ctx.now);
+  }
+
+  // La salutation est toujours produite côté serveur avec le nom du compte connecté,
+  // même lorsque le modèle IA a classé le message en conversationnel.
+  if (outcome.intent === 'chitchat') {
+    outcome.reply = greetingReply(ctx.dossier, text, ctx.userName);
   }
 
   // Gemini a classé "question" mais sans réponse exploitable → réponse chiffrée hors ligne
@@ -112,7 +143,7 @@ router.post('/chat', handler(async (req, res) => {
     if (!canWrite) {
       return res.status(403).json({ error: "Votre profil est en lecture seule : je peux répondre à vos questions mais pas enregistrer d'écritures." });
     }
-    const entries = buildEntries(outcome.operations, { ctx, rawInput: message.trim() || text, inputType: imagePayload ? 'photo' : mode, source });
+    const entries = buildEntries(outcome.operations, { ctx, rawInput: String(message).trim() || text, inputType: imagePayload ? 'photo' : mode, source });
     if (entries.length === 0) {
       return res.json({ success: true, intent: 'clarification', reply: "Je n'ai pas pu construire d'écriture valide (montant manquant ou comptes identiques). Pouvez-vous reformuler avec le montant et le mode de paiement ?", entries: [], pendingText: text, source });
     }
@@ -144,7 +175,7 @@ router.post('/chat', handler(async (req, res) => {
 
 // Résumé IA d'un dossier (cabinet) : santé, risques, points à traiter.
 router.post('/dossier-summary', handler(async (req, res) => {
-  const ctx = await loadContext(String(req.body?.dossierId ?? ''));
+  const ctx = await loadContext(req, String(req.body?.dossierId ?? ''));
   if (!ctx) return res.status(404).json({ error: 'Dossier introuvable.' });
   const a = buildAgentContext(ctx.entries, ctx.now);
   const f = (n: number) => `${formatFcfa(n)} FCFA`;
@@ -156,7 +187,6 @@ router.post('/dossier-summary', handler(async (req, res) => {
   if (a.forecast.runwayDays !== null && a.forecast.runwayDays < 60) points.push(`trésorerie pour environ ${a.forecast.runwayDays} jours au rythme actuel`);
   if (a.credit.sufficientData && a.credit.traceabilityRate < 40) points.push(`seulement ${a.credit.traceabilityRate}% des ventes tracées hors espèces`);
   const thresholdBatch = ctx.entries.filter(e => e.status === 'pending_review' && e.confidenceScore >= ctx.dossier.confidenceThreshold).length;
-
   res.json({
     dossierId: ctx.dossier.id,
     summary: `${ctx.dossier.name} : trésorerie ${f(a.treasury.total)}, chiffre d'affaires du mois ${f(a.month.revenue)}, charges ${f(a.month.expenses)}, résultat ${f(a.month.result)}. TVA du mois : ${a.tva.netToPay > 0 ? `${f(a.tva.netToPay)} à reverser` : `crédit de ${f(a.tva.credit)}`}. Score de solvabilité ${a.credit.sufficientData ? `${a.credit.score}/100` : 'non évaluable (historique insuffisant)'}.`,

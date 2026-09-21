@@ -145,8 +145,9 @@ export function answerQuestion(question: string, ctx: AgentContext, dossier: Cli
   return `Voici la situation de ${dossier.name} : trésorerie ${F(t.total)}, chiffre d'affaires du mois ${F(ctx.month.revenue)}, charges ${F(ctx.month.expenses)}, résultat ${F(ctx.month.result)}. Les clients vous doivent ${F(ctx.receivables.total)} et vous devez ${F(ctx.payables.total)} à vos fournisseurs. ${ctx.review.pending + ctx.review.anomalies > 0 ? `${ctx.review.pending + ctx.review.anomalies} écriture(s) attendent une vérification.` : 'Toutes vos écritures sont validées.'}\nVous pouvez me demander : « combien j'ai en caisse ? », « qui me doit de l'argent ? », « puis-je payer mon loyer ? », « quel est mon score de crédit ? ».`;
 }
 
-export function greetingReply(dossier: ClientDossier, text: string): string {
+export function greetingReply(dossier: ClientDossier, text: string, userName?: string): string {
   const n = normalizeText(text);
+  const who = (userName && userName.trim()) || dossier.managerName;
   if (/^merci/.test(n)) return 'Avec plaisir ! Dites-moi dès que vous avez une nouvelle vente, un achat ou un reçu.';
-  return `Bonjour ${dossier.managerName} ! Dites-moi ce que vous avez vendu ou acheté aujourd'hui pour ${dossier.name}, ou posez-moi une question sur votre trésorerie.`;
+  return `Bonjour ${who} ! Dites-moi ce que vous avez vendu ou acheté aujourd'hui pour ${dossier.name}, ou posez-moi une question sur votre trésorerie.`;
 }

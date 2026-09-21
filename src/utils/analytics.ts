@@ -329,3 +329,119 @@ export function buildAgentContext(entries: JournalEntry[], now = new Date()) {
 }
 
 export type AgentContext = ReturnType<typeof buildAgentContext>;
+
+// ---------- États financiers (Bilan & Compte de résultat) ----------
+export interface FinancialReport {
+  hasData: boolean;
+  // Compte de résultat (produits / charges HT)
+  revenue: number;
+  otherIncome: number;
+  purchases: number;
+  services: number;
+  personnel: number;
+  taxes: number;
+  depreciation: number;
+  financialResult: number;
+  haoResult: number;
+  resultBeforeTax: number;
+  corporateTax: number;
+  corporateTaxEstimated: boolean;
+  netProfit: number;
+  // Soldes intermédiaires de gestion
+  grossMargin: number;
+  addedValue: number;
+  ebe: number;
+  operatingResult: number;
+  // Bilan
+  immobilisationsBrutes: number;
+  amortissements: number;
+  immobilisationsNettes: number;
+  stocks: number;
+  creances: number;
+  treasury: number;
+  totalActif: number;
+  capital: number;
+  dettes: number;
+  resultatBilan: number;
+  totalPassif: number;
+  /** Écart actif - passif (0 si équilibré) ; un écart signale un jeu d'écritures incomplet. */
+  imbalance: number;
+}
+
+/**
+ * Construit le Bilan et le Compte de résultat SYSCOHADA à partir des SEULES écritures
+ * validées du dossier. Aucune valeur de démonstration ou d'ajustement n'est injectée :
+ * un dossier sans écriture produit un rapport entièrement à zéro (hasData = false).
+ */
+export function computeFinancialReport(entries: JournalEntry[]): FinancialReport {
+  const validated = entries.filter(e => e.status === 'validated');
+  const balances = computeBalances(validated);
+  const treasury = computeTreasury(validated).total;
+
+  // Produits (crédit) et charges (débit), montants hors taxes.
+  const incomeOnCredit = (prefixes: string[]) => {
+    let total = 0;
+    for (const e of validated) if (prefixes.some(p => e.creditAccountCode.startsWith(p))) total += net(e);
+    return total;
+  };
+  const expenseOnDebit = (prefixes: string[]) => {
+    let total = 0;
+    for (const e of validated) if (prefixes.some(p => e.debitAccountCode.startsWith(p))) total += net(e);
+    return total;
+  };
+
+  const revenue = incomeOnCredit(['70']);
+  const otherIncome = incomeOnCredit(['71', '72', '73', '74', '75']);
+  const purchases = expenseOnDebit(['60', '61']);
+  const services = expenseOnDebit(['62', '63']);
+  const personnel = expenseOnDebit(['66']);
+  const taxes = expenseOnDebit(['64']);
+  const depreciation = expenseOnDebit(['68']);
+  const financialResult = incomeOnCredit(['77']) - expenseOnDebit(['67']);
+  const haoResult = incomeOnCredit(['82', '84', '86', '88']) - expenseOnDebit(['81', '83', '85', '87']);
+
+  const grossMargin = revenue - purchases;
+  const addedValue = grossMargin - services;
+  const ebe = addedValue - personnel - taxes;
+  const operatingResult = ebe - depreciation;
+  const resultBeforeTax = operatingResult + financialResult + haoResult;
+
+  const taxEntries = expenseOnDebit(['89']);
+  const corporateTaxEstimated = taxEntries === 0 && resultBeforeTax > 0;
+  const corporateTax = taxEntries > 0 ? taxEntries : corporateTaxEstimated ? Math.round(resultBeforeTax * 0.25) : 0;
+  const netProfit = resultBeforeTax - corporateTax;
+
+  // Bilan : soldes réels par nature de compte.
+  const sumBalances = (predicate: (code: string, balance: number) => boolean) => {
+    let total = 0;
+    for (const [code, balance] of Object.entries(balances)) {
+      if (predicate(code, balance)) total += balance;
+    }
+    return total;
+  };
+
+  const immobilisationsBrutes = sumBalances((c, b) => c.startsWith('2') && !c.startsWith('28') && b > 0);
+  const amortissements = -sumBalances(c => c.startsWith('28'));
+  const immobilisationsNettes = immobilisationsBrutes - Math.max(0, amortissements);
+  const stocks = sumBalances((c, b) => c.startsWith('3') && b > 0);
+  const creances = sumBalances((c, b) => c.startsWith('4') && b > 0);
+  const totalActif = immobilisationsNettes + stocks + creances + treasury;
+
+  const capital = -sumBalances(c => /^1[0-3]/.test(c));
+  const dettes = -sumBalances((c, b) => c.startsWith('4') && b < 0);
+  const resultatBilan = netProfit;
+  const totalPassif = capital + dettes + resultatBilan;
+
+  const hasData = validated.length > 0;
+
+  return {
+    hasData,
+    revenue, otherIncome, purchases, services, personnel, taxes, depreciation,
+    financialResult, haoResult, resultBeforeTax, corporateTax, corporateTaxEstimated,
+    netProfit, grossMargin, addedValue, ebe, operatingResult,
+    immobilisationsBrutes, amortissements: Math.max(0, amortissements), immobilisationsNettes,
+    stocks, creances, treasury, totalActif,
+    capital, dettes, resultatBilan, totalPassif,
+    imbalance: totalActif - totalPassif,
+  };
+}

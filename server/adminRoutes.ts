@@ -3,6 +3,8 @@ import { prisma } from './db';
 
 const router = Router();
 
+const ROLES = ['ADMIN', 'COMPTABLE', 'LECTURE_SEULE'] as const;
+
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
   if (!user || user.role !== 'ADMIN') {
@@ -13,6 +15,11 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
 function serializeUser(u: { id: string; email: string; name: string; role: string; createdAt: Date }) {
   return { id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.createdAt.toISOString() };
+}
+
+function validId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
 }
 
 router.use(requireAdmin);
@@ -26,35 +33,36 @@ router.get('/users', async (_req, res, next) => {
   }
 });
 
-router.patch('/users/:id/role', async (req, res, next) => {
+/** Changement de rôle : POST /users/:id/role (aucune méthode PATCH exposée). */
+router.post('/users/:id/role', async (req, res, next) => {
   try {
+    const id = validId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Identifiant utilisateur invalide.' });
     const { role } = req.body ?? {};
-    if (!['ADMIN', 'COMPTABLE', 'LECTURE_SEULE'].includes(role)) {
+    if (!ROLES.includes(role)) {
       return res.status(400).json({ error: 'Rôle invalide.' });
     }
-
     const requester = (req as any).user;
-    if (req.params.id === requester.sub && role !== 'ADMIN') {
+    if (id === requester.sub && role !== 'ADMIN') {
       return res.status(400).json({ error: 'Vous ne pouvez pas retirer votre propre rôle administrateur.' });
     }
-
-    const updated = await prisma.user.update({
-      where: { id: req.params.id },
-      data: { role },
-    });
+    const updated = await prisma.user.update({ where: { id }, data: { role } });
     res.json(serializeUser(updated));
   } catch (e) {
     next(e);
   }
 });
 
-router.delete('/users/:id', async (req, res, next) => {
+/** Suppression d'un compte : POST /users/:id/delete (cascade sur ses dossiers et écritures). */
+router.post('/users/:id/delete', async (req, res, next) => {
   try {
+    const id = validId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Identifiant utilisateur invalide.' });
     const requester = (req as any).user;
-    if (req.params.id === requester.sub) {
+    if (id === requester.sub) {
       return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' });
     }
-    await prisma.user.delete({ where: { id: req.params.id } });
+    await prisma.user.delete({ where: { id } });
     res.status(204).end();
   } catch (e) {
     next(e);
