@@ -72,6 +72,25 @@ export const SYSCOHADA_ACCOUNTS: SYSCOHADAAccount[] = [
   { code: '8511', label: 'Dons et subventions exceptionnelles reçus', classNumber: 8, category: 'produit' }
 ];
 
+/**
+ * Comptes personnalisés des dossiers (sous-comptes), chargés depuis /api/bootstrap.
+ * ponytail: ajoutés au tableau partagé pour que tous les écrans existants les voient sans prop
+ * supplémentaire ; passer par un contexte React si le plan doit se rafraîchir sans rechargement.
+ */
+export function registerCustomAccounts(list: SYSCOHADAAccount[]) {
+  for (const a of list) {
+    const i = SYSCOHADA_ACCOUNTS.findIndex(x => x.code === a.code);
+    if (i >= 0) SYSCOHADA_ACCOUNTS[i] = a;
+    else SYSCOHADA_ACCOUNTS.push(a);
+  }
+  SYSCOHADA_ACCOUNTS.sort((a, b) => a.code.localeCompare(b.code));
+}
+
+/** Comptes utilisables dans un dossier : plan standard + ses propres comptes actifs. */
+export function accountsForDossier(dossierId: string): SYSCOHADAAccount[] {
+  return SYSCOHADA_ACCOUNTS.filter(a => (!a.dossierId || a.dossierId === dossierId) && a.active !== false);
+}
+
 export function getAccountByCode(code: string): SYSCOHADAAccount | undefined {
   return SYSCOHADA_ACCOUNTS.find(a => a.code === code || a.code.startsWith(code));
 }

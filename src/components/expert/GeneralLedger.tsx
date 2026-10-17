@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
 import { SYSCOHADA_ACCOUNTS } from '../../data/syscohadaPlan';
-import { BookOpen, Scale, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { BookOpen, Scale, ChevronDown, ChevronRight, CheckCircle2, FileSpreadsheet } from 'lucide-react';
+import { downloadXlsx, fileSafe } from '../../utils/excelExport';
 
 interface GeneralLedgerProps {
   entries: JournalEntry[];
@@ -108,6 +109,28 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
 
   const isBalanced = grandTotalDebit === grandTotalCredit && grandTotalSoldeDebiteur === grandTotalSoldeCrediteur;
 
+  const exportXlsx = () => {
+    const ledgerRows: (string | number)[][] = [['Compte', 'Intitulé', 'Date', 'Pièce', 'Libellé', 'Débit', 'Crédit', 'Solde cumulé']];
+    for (const acc of allAccounts) {
+      let running = 0;
+      for (const m of [...acc.movements].sort((a, b) => a.date.localeCompare(b.date))) {
+        running += m.debit - m.credit;
+        ledgerRows.push([acc.code, acc.label, m.date, m.pieceRef, m.label, m.debit, m.credit, running]);
+      }
+    }
+    downloadXlsx(`Balance_GrandLivre_${fileSafe(activeDossier.name)}_${new Date().toISOString().slice(0, 10)}`, [
+      {
+        name: 'Balance',
+        rows: [
+          ['Compte', 'Intitulé', 'Total débit', 'Total crédit', 'Solde débiteur', 'Solde créditeur'],
+          ...allAccounts.map(a => [a.code, a.label, a.totalDebit, a.totalCredit, a.debitBalance, a.creditBalance]),
+          ['TOTAL', '', grandTotalDebit, grandTotalCredit, grandTotalSoldeDebiteur, grandTotalSoldeCrediteur],
+        ],
+      },
+      { name: 'Grand Livre', rows: ledgerRows },
+    ]);
+  };
+
   const filteredAccounts = selectedClass === 'all' 
     ? allAccounts 
     : allAccounts.filter(a => a.accountClass === selectedClass);
@@ -125,12 +148,21 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({
           </p>
         </div>
 
+        <div className="flex items-center gap-2">
+        <button
+          onClick={exportXlsx}
+          className="px-3.5 py-1.5 bg-[#F8F7FD] text-[#1E084A] text-xs font-bold rounded-xl border border-[#DDD6FE] hover:bg-[#EDE9FE] flex items-center gap-1.5 shadow-2xs"
+        >
+          <FileSpreadsheet className="w-4 h-4 text-[#10B981]" />
+          <span>Export Excel</span>
+        </button>
         {/* Balance Status Pill */}
         <div className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 shadow-2xs ${
           isBalanced ? 'bg-[#F0FDF4] text-[#166534] border-[#BBF7D0]' : 'bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]'
         }`}>
           <Scale className="w-4 h-4" />
           <span>{isBalanced ? 'Partie Double Équilibrée' : 'Déséquilibre Détecté'}</span>
+        </div>
         </div>
       </div>
 

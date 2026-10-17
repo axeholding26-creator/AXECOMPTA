@@ -2,7 +2,7 @@ export interface ManagedUser {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'COMPTABLE' | 'LECTURE_SEULE';
+  role: 'ADMIN' | 'CHEF_COMPTABLE' | 'DAF' | 'COMPTABLE' | 'LECTURE_SEULE';
   createdAt: string;
 }
 

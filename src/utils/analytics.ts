@@ -61,14 +61,22 @@ export interface TreasurySnapshot {
   total: number;
 }
 
+/** Somme des soldes des comptes commençant par l'un des préfixes (inclut les sous-comptes). */
+function sumPrefix(b: Record<string, number>, ...prefixes: string[]): number {
+  let total = 0;
+  for (const [code, v] of Object.entries(b)) if (prefixes.some(p => code.startsWith(p))) total += v;
+  return total;
+}
+
 export function computeTreasury(entries: JournalEntry[]): TreasurySnapshot {
   const b = computeBalances(entries);
-  const cash = (b['5711'] ?? 0) + (b['5721'] ?? 0);
-  const orangeMoney = b['5261'] ?? 0;
-  const mtnMomo = b['5262'] ?? 0;
-  const wave = b['5263'] ?? 0;
-  const moovMoney = b['5264'] ?? 0;
-  const bank = b['5211'] ?? 0;
+  const cash = sumPrefix(b, '57');
+  const orangeMoney = sumPrefix(b, '5261');
+  const mtnMomo = sumPrefix(b, '5262');
+  const wave = sumPrefix(b, '5263');
+  const moovMoney = sumPrefix(b, '5264');
+  // Banques : 52x hors portefeuilles Mobile Money (526x), sous-comptes inclus (5212 Ecobank…)
+  const bank = sumPrefix(b, '52') - sumPrefix(b, '526');
   const mobileMoney = orangeMoney + mtnMomo + wave + moovMoney;
   return { cash, orangeMoney, mtnMomo, wave, moovMoney, bank, mobileMoney, total: cash + mobileMoney + bank };
 }
@@ -129,9 +137,9 @@ export function computeFlows(entries: JournalEntry[], from: string, to: string):
 
 export function computeReceivables(entries: JournalEntry[]) {
   const b = computeBalances(entries);
-  const total = Math.max(0, b['4111'] ?? 0);
+  const total = Math.max(0, sumPrefix(b, '411'));
   const open = entries
-    .filter(e => e.debitAccountCode === '4111')
+    .filter(e => e.debitAccountCode.startsWith('411'))
     .sort((a, c) => (a.date < c.date ? 1 : -1))
     .slice(0, 5)
     .map(e => ({ date: e.date, label: e.label, amount: e.amount }));
@@ -140,9 +148,9 @@ export function computeReceivables(entries: JournalEntry[]) {
 
 export function computePayables(entries: JournalEntry[]) {
   const b = computeBalances(entries);
-  const total = Math.max(0, -(b['4011'] ?? 0));
+  const total = Math.max(0, -sumPrefix(b, '401'));
   const open = entries
-    .filter(e => e.creditAccountCode === '4011')
+    .filter(e => e.creditAccountCode.startsWith('401'))
     .sort((a, c) => (a.date < c.date ? 1 : -1))
     .slice(0, 5)
     .map(e => ({ date: e.date, label: e.label, amount: e.amount }));
@@ -167,6 +175,9 @@ export function computeTva(entries: JournalEntry[], month: string): TvaSummary {
   let totalSalesHT = 0, totalPurchasesHT = 0, tvaCollectee = 0, tvaDeductible = 0, entriesCount = 0;
   for (const e of entries) {
     if (e.status !== 'validated' || !e.date.startsWith(month)) continue;
+    // Écritures de TVA dédiées (factures générées) : 411 / 4431 et 4452 / 401
+    if (e.creditAccountCode.startsWith('443')) { tvaCollectee += e.amount; continue; }
+    if (e.debitAccountCode.startsWith('445')) { tvaDeductible += e.amount; continue; }
     if (e.creditAccountCode.startsWith('7')) {
       totalSalesHT += net(e);
       tvaCollectee += e.tvaAmount || 0;

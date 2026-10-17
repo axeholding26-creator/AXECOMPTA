@@ -4,7 +4,7 @@ import { hashPassword } from './auth';
 
 const router = Router();
 
-const ROLES = ['ADMIN', 'COMPTABLE', 'LECTURE_SEULE'] as const;
+const ROLES = ['ADMIN', 'CHEF_COMPTABLE', 'DAF', 'COMPTABLE', 'LECTURE_SEULE'] as const;
 
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;

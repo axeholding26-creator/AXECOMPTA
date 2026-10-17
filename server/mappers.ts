@@ -1,4 +1,4 @@
-import type { ClientDossier, JournalEntry, AppNotification, PlatformSettings } from '../src/types';
+import type { ClientDossier, JournalEntry, AppNotification, PlatformSettings, SYSCOHADAAccount, Invoice } from '../src/types';
 
 // Prisma enums use @map to store the exact French/hyphenated strings the
 // frontend already relies on. Prisma Client itself always returns the
@@ -98,6 +98,59 @@ export function serializeEntry(row: any): JournalEntry {
     explanationSimplified: row.explanationSimplified,
     paymentMethod: row.paymentMethod,
     auditTrail: (row.auditTrail ?? []).map(serializeAuditLog),
+    createdById: row.createdById ?? undefined,
+    updatedById: row.updatedById ?? undefined,
+    validatedById: row.validatedById ?? undefined,
+    validatedAt: row.validatedAt?.toISOString() ?? undefined,
+    invoiceId: row.invoiceId ?? undefined,
+  };
+}
+
+export function serializeAccount(row: any): SYSCOHADAAccount {
+  return {
+    code: row.code,
+    label: row.label,
+    classNumber: row.classNumber,
+    category: row.category,
+    parentCode: row.parentCode ?? undefined,
+    dossierId: row.dossierId ?? undefined,
+    active: row.active,
+  };
+}
+
+const day = (d: Date) => d.toISOString().split('T')[0];
+
+export function serializeInvoice(row: any): Invoice {
+  return {
+    id: row.id,
+    clientDossierId: row.clientDossierId,
+    number: row.number,
+    date: day(row.date),
+    dueDate: day(row.dueDate),
+    mode: row.mode,
+    paymentMethod: row.paymentMethod ?? undefined,
+    customerName: row.customerName,
+    customerPhone: row.customerPhone ?? undefined,
+    customerEmail: row.customerEmail ?? undefined,
+    customerAddress: row.customerAddress ?? undefined,
+    customerTaxId: row.customerTaxId ?? undefined,
+    customerAccountCode: row.customerAccountCode,
+    salesAccountCode: row.salesAccountCode,
+    vatRate: Number(row.vatRate),
+    totalHT: Number(row.totalHT),
+    totalTVA: Number(row.totalTVA),
+    totalTTC: Number(row.totalTTC),
+    paymentTerms: row.paymentTerms ?? undefined,
+    notes: row.notes ?? undefined,
+    status: row.status,
+    createdById: row.createdById ?? undefined,
+    updatedById: row.updatedById ?? undefined,
+    validatedById: row.validatedById ?? undefined,
+    validatedAt: row.validatedAt?.toISOString() ?? undefined,
+    lines: [...(row.lines ?? [])]
+      .sort((a: any, b: any) => a.position - b.position)
+      .map((l: any) => ({ description: l.description, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), amountHT: Number(l.amountHT) })),
+    payments: (row.payments ?? []).map((p: any) => ({ id: p.id, entryId: p.entryId, amount: Number(p.amount), createdAt: p.createdAt.toISOString() })),
   };
 }
 

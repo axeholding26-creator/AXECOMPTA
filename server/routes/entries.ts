@@ -1,23 +1,42 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { prisma } from '../db';
 import { serializeEntry } from '../mappers';
-import { findAccessibleDossier, findAccessibleEntry } from '../access';
+import { findAccessibleDossier, findAccessibleEntry, canValidate, canUnvalidate, actorName } from '../access';
+import { getAuthUser } from '../auth';
 import { handler } from '../http';
-import { validateEntryInput, identifier, EntryInput, unwrap } from '../validation';
+import { validateEntryInput, identifier, optionalReason, EntryInput, unwrap } from '../validation';
 import { ENTRY_INCLUDE } from './bootstrap';
 
 const router = Router();
 
-/** Vérifie que tous les comptes SYSCOHADA référencés existent (évite une erreur de clé étrangère). */
-async function assertAccountsExist(codes: string[]): Promise<string | null> {
+/** Statuts encore modifiables par un saisisseur. */
+const EDITABLE = ['draft', 'pending_review', 'anomaly'];
+
+/**
+ * Vérifie que les comptes existent, sont actifs et appartiennent au plan standard
+ * ou au plan propre du dossier (évite une erreur de clé étrangère).
+ */
+export async function assertAccountsUsable(codes: string[], dossierId: string): Promise<string | null> {
   const unique = [...new Set(codes)];
-  const found = await prisma.syscohadaAccount.findMany({ where: { code: { in: unique } }, select: { code: true } });
+  const found = await prisma.syscohadaAccount.findMany({
+    where: { code: { in: unique }, active: true, OR: [{ dossierId: null }, { dossierId }] },
+    select: { code: true },
+  });
   const known = new Set(found.map(f => f.code));
   const missing = unique.filter(c => !known.has(c));
-  return missing.length ? `Compte SYSCOHADA inconnu : ${missing.join(', ')}.` : null;
+  return missing.length ? `Compte inconnu ou inactif pour ce dossier : ${missing.join(', ')}.` : null;
 }
 
-function entryCreateData(e: EntryInput, dossierId: string) {
+/** Séparation des tâches : celui qui a saisi ou modifié l'écriture ne peut pas la valider. */
+export function isOwnWork(row: { createdById: string | null; updatedById: string | null }, userId: string) {
+  return row.createdById === userId || row.updatedById === userId;
+}
+
+function userId(req: Request): string {
+  return getAuthUser(req)!.sub;
+}
+
+function entryCreateData(e: EntryInput, dossierId: string, createdById: string) {
   return {
     id: e.id,
     date: new Date(e.date),
@@ -35,6 +54,7 @@ function entryCreateData(e: EntryInput, dossierId: string) {
     inputType: e.inputType as any,
     explanationSimplified: e.explanationSimplified,
     paymentMethod: e.paymentMethod as any,
+    createdById,
     auditTrail: {
       create: e.auditTrail.map(a => ({
         id: a.id,
@@ -49,7 +69,7 @@ function entryCreateData(e: EntryInput, dossierId: string) {
   };
 }
 
-/** Création d'une écriture rattachée à un dossier accessible au requérant. */
+/** Création d'une écriture rattachée à un dossier accessible au requérant (brouillon ou en attente). */
 router.post('/entries', handler(async (req, res) => {
   const dossierId = identifier((req.body ?? {}).clientDossierId);
   if (!dossierId) return res.status(400).json({ error: 'Dossier comptable invalide.' });
@@ -58,10 +78,10 @@ router.post('/entries', handler(async (req, res) => {
 
   const e = unwrap(validateEntryInput(req.body));
 
-  const accountError = await assertAccountsExist([e.debitAccountCode, e.creditAccountCode]);
+  const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
   if (accountError) return res.status(400).json({ error: accountError });
 
-  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId), include: ENTRY_INCLUDE });
+  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
   res.status(201).json(serializeEntry(created));
 }));
 
@@ -80,25 +100,34 @@ router.post('/entries/import', handler(async (req, res) => {
 
     const e = unwrap(validateEntryInput(raw, { requireId: true }));
 
-    const accountError = await assertAccountsExist([e.debitAccountCode, e.creditAccountCode]);
+    const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
     if (accountError) return res.status(400).json({ error: accountError });
 
-    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId), include: ENTRY_INCLUDE });
+    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
     created.push(serializeEntry(row));
   }
   res.status(201).json(created);
 }));
 
-/** Mise à jour d'une écriture : POST /entries/:id/update. La piste d'audit ne s'efface jamais. */
+/**
+ * Mise à jour d'une écriture : POST /entries/:id/update.
+ * Interdite une fois validée ou annulée (il faut d'abord la dévalider). La piste d'audit ne s'efface jamais.
+ */
 router.post('/entries/:id/update', handler(async (req, res) => {
   const id = identifier(req.params.id);
   if (!id) return res.status(400).json({ error: 'Identifiant d\'écriture invalide.' });
   const existing = await findAccessibleEntry(req, id);
   if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (!EDITABLE.includes(existing.status)) {
+    return res.status(409).json({ error: 'Écriture validée ou annulée : modification impossible (dévalidation par le Chef comptable requise).' });
+  }
+  if (existing.invoiceId) {
+    return res.status(409).json({ error: 'Écriture générée par une facture : modifiez la facture.' });
+  }
 
   const e = unwrap(validateEntryInput(req.body));
 
-  const accountError = await assertAccountsExist([e.debitAccountCode, e.creditAccountCode]);
+  const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], existing.clientDossierId);
   if (accountError) return res.status(400).json({ error: accountError });
 
   await prisma.journalEntry.update({
@@ -113,11 +142,12 @@ router.post('/entries/:id/update', handler(async (req, res) => {
       tvaAmount: e.tvaAmount,
       status: e.status as any,
       confidenceScore: e.confidenceScore,
-      detectedAnomaly: e.detectedAnomaly,
+      detectedAnomaly: e.detectedAnomaly ?? null,
       rawInput: e.rawInput,
       inputType: e.inputType as any,
       explanationSimplified: e.explanationSimplified,
       paymentMethod: e.paymentMethod as any,
+      updatedById: userId(req),
     },
   });
 
@@ -142,39 +172,117 @@ router.post('/entries/:id/update', handler(async (req, res) => {
   res.json(serializeEntry(fresh));
 }));
 
-/** Validation en lot : seules les écritures accessibles au requérant sont traitées. */
+/** Brouillon → en attente de validation. */
+router.post('/entries/:id/submit', handler(async (req, res) => {
+  const id = identifier(req.params.id);
+  const existing = id ? await findAccessibleEntry(req, id) : null;
+  if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (existing.status !== 'draft') return res.status(409).json({ error: 'Seul un brouillon peut être soumis à validation.' });
+
+  const row = await prisma.journalEntry.update({
+    where: { id: existing.id },
+    data: {
+      status: 'pending_review',
+      auditTrail: { create: { action: 'submitted_for_review', author: await actorName(req), notes: 'Soumise à validation.' } },
+    },
+    include: ENTRY_INCLUDE,
+  });
+  res.json(serializeEntry(row));
+}));
+
+/**
+ * Validation (unitaire ou en lot) : DAF, Chef comptable ou administrateur uniquement,
+ * et jamais sur une écriture que l'on a soi-même saisie ou modifiée.
+ * Réponse : écritures validées + écritures refusées avec leur motif.
+ */
 router.post('/entries/batch-validate', handler(async (req, res) => {
+  const user = getAuthUser(req)!;
+  if (!canValidate(user.role)) {
+    return res.status(403).json({ error: 'Validation réservée au DAF et au Chef comptable.' });
+  }
   const rawIds = Array.isArray((req.body ?? {}).ids) ? (req.body.ids as unknown[]) : [];
   const ids = rawIds.map(identifier).filter((v): v is string => Boolean(v));
   if (ids.length === 0) return res.status(400).json({ error: 'Aucune écriture à valider.' });
 
-  const allowed: string[] = [];
+  const author = await actorName(req);
+  const validatedIds: string[] = [];
+  const refused: { id: string; reason: string }[] = [];
   for (const id of ids) {
     const entry = await findAccessibleEntry(req, id);
-    if (entry) allowed.push(id);
-  }
-  if (allowed.length === 0) return res.status(404).json({ error: 'Aucune écriture accessible à valider.' });
-
-  for (const id of allowed) {
+    if (!entry) { refused.push({ id, reason: 'Écriture introuvable.' }); continue; }
+    if (entry.status !== 'pending_review' && entry.status !== 'anomaly') {
+      refused.push({ id, reason: entry.status === 'draft' ? 'Brouillon non soumis.' : 'Déjà validée ou annulée.' });
+      continue;
+    }
+    if (isOwnWork(entry, user.sub)) {
+      refused.push({ id, reason: 'Séparation des tâches : vous avez saisi ou modifié cette écriture.' });
+      continue;
+    }
     await prisma.journalEntry.update({
-      where: { id: id },
+      where: { id },
       data: {
         status: 'validated',
         detectedAnomaly: null,
-        auditTrail: {
-          create: {
-            id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            action: 'validated_by_expert',
-            author: 'Expert-comptable (superviseur)',
-            notes: "Validation en lot par l'expert-comptable.",
-          },
-        },
+        validatedById: user.sub,
+        validatedAt: new Date(),
+        auditTrail: { create: { action: 'validated_by_expert', author, notes: 'Validation définitive.' } },
       },
     });
+    validatedIds.push(id);
   }
 
-  const rows = await prisma.journalEntry.findMany({ where: { id: { in: allowed } }, include: ENTRY_INCLUDE });
-  res.json(rows.map(serializeEntry));
+  const rows = await prisma.journalEntry.findMany({ where: { id: { in: validatedIds } }, include: ENTRY_INCLUDE });
+  res.json({ validated: rows.map(serializeEntry), refused });
+}));
+
+/** Dévalidation : Chef comptable (ou administrateur) uniquement. L'écriture repasse "en attente". */
+router.post('/entries/:id/unvalidate', handler(async (req, res) => {
+  if (!canUnvalidate(getAuthUser(req)?.role)) {
+    return res.status(403).json({ error: 'Dévalidation réservée au Chef comptable.' });
+  }
+  const id = identifier(req.params.id);
+  const existing = id ? await findAccessibleEntry(req, id) : null;
+  if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (existing.status !== 'validated') return res.status(409).json({ error: 'Seule une écriture validée peut être dévalidée.' });
+  if (existing.invoiceId) return res.status(409).json({ error: 'Écriture générée par une facture : annulez la facture.' });
+
+  const row = await prisma.journalEntry.update({
+    where: { id: existing.id },
+    data: {
+      status: 'pending_review',
+      validatedById: null,
+      validatedAt: null,
+      auditTrail: { create: { action: 'unvalidated', author: await actorName(req), notes: optionalReason(req.body) ?? 'Dévalidée.' } },
+    },
+    include: ENTRY_INCLUDE,
+  });
+  res.json(serializeEntry(row));
+}));
+
+/** Annulation : Chef comptable (ou administrateur) uniquement. Le lettrage éventuel est supprimé. */
+router.post('/entries/:id/cancel', handler(async (req, res) => {
+  if (!canUnvalidate(getAuthUser(req)?.role)) {
+    return res.status(403).json({ error: 'Annulation réservée au Chef comptable.' });
+  }
+  const id = identifier(req.params.id);
+  const existing = id ? await findAccessibleEntry(req, id) : null;
+  if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (existing.status === 'cancelled') return res.status(409).json({ error: 'Écriture déjà annulée.' });
+  if (existing.invoiceId) return res.status(409).json({ error: 'Écriture générée par une facture : annulez la facture.' });
+
+  const author = await actorName(req);
+  const [, row] = await prisma.$transaction([
+    prisma.invoicePayment.deleteMany({ where: { entryId: existing.id } }),
+    prisma.journalEntry.update({
+      where: { id: existing.id },
+      data: {
+        status: 'cancelled',
+        auditTrail: { create: { action: 'cancelled', author, notes: optionalReason(req.body) ?? 'Annulée.' } },
+      },
+      include: ENTRY_INCLUDE,
+    }),
+  ]);
+  res.json(serializeEntry(row));
 }));
 
 export default router;

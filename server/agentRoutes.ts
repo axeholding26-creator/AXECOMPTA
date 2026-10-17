@@ -12,6 +12,7 @@ import { analyzeWithGemini, getGenAI, modelFromSettings } from './agent/gemini';
 import { isGreeting, isQuestion, parseWithHeuristics } from './agent/heuristic';
 import type { AgentRequestContext, ParseOutcome } from './agent/types';
 import { getAuthUser } from './auth';
+import { seesAllDossiers } from './access';
 
 const router = Router();
 const ENTRY_INCLUDE = { auditTrail: true, debitAccount: true, creditAccount: true } as const;
@@ -36,11 +37,11 @@ async function loadContext(req: Request, dossierId: string): Promise<AgentReques
     include: { owner: { select: { name: true } } },
   });
   if (!dossierRow) return null;
-  if (user.role !== 'ADMIN' && dossierRow.ownerId !== user.sub) return null;
+  if (!seesAllDossiers(user.role) && dossierRow.ownerId !== user.sub) return null;
 
   const [entryRows, settingsRow, userRow] = await Promise.all([
     prisma.journalEntry.findMany({
-      where: { clientDossierId: dossierId },
+      where: { clientDossierId: dossierId, status: { not: 'cancelled' } },
       include: ENTRY_INCLUDE,
       orderBy: { date: 'desc' },
       take: 2000,

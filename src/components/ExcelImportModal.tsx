@@ -264,7 +264,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     }
 
     const newEntries: JournalEntry[] = selectedRows.map((r, i) => {
-      const status: TransactionStatus = importAsValidated ? 'validated' : 'pending_review';
+      // Séparation des tâches : un import n'est jamais validé directement (soumis ou brouillon).
+      const status: TransactionStatus = importAsValidated ? 'pending_review' : 'draft';
       return {
         id: `entry-imp-${Date.now()}-${i}`,
         date: r.date,
@@ -288,7 +289,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           {
             id: `aud-${Date.now()}-${i}`,
             timestamp: new Date().toISOString(),
-            action: importAsValidated ? 'auto_validated' : 'created_by_ai',
+            action: 'created_by_ai',
             author: 'Module Import Excel AxeCompta',
             notes: `Importé depuis ${fileName}. Détection SYSCOHADA confiance ${r.confidenceScore}%.`,
             confidenceScore: r.confidenceScore
@@ -805,7 +806,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       onChange={() => setImportAsValidated(true)}
                       className="accent-[#7024E3]"
                     />
-                    <span>Valider et intégrer directement au Grand Livre (SYSCOHADA)</span>
+                    <span>Soumettre directement à validation (DAF / Chef comptable)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer font-bold text-[#534674]">
                     <input
@@ -815,7 +816,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       onChange={() => setImportAsValidated(false)}
                       className="accent-[#7024E3]"
                     />
-                    <span>Placer en attente de validation (Revue par l'expert)</span>
+                    <span>Importer en brouillon (à relire avant soumission)</span>
                   </label>
                 </div>
 

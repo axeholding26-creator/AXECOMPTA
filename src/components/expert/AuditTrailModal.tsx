@@ -64,7 +64,7 @@ export const AuditTrailModal: React.FC<AuditTrailModalProps> = ({
                 let icon = <CheckCircle2 className="w-3.5 h-3.5 text-[#10B981]" />;
                 let badgeClass = 'bg-[#F0FDF4] text-[#166534] border border-[#BBF7D0]';
 
-                if (item.action === 'anomaly_flagged') {
+                if (item.action === 'anomaly_flagged' || item.action === 'cancelled' || item.action === 'unvalidated') {
                   icon = <AlertTriangle className="w-3.5 h-3.5 text-[#DC2626]" />;
                   badgeClass = 'bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA]';
                 } else if (item.action === 'edited_by_expert') {

@@ -748,25 +748,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Auto Validate Toggle */}
-                  <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] flex items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
-                        Auto-validation des flux à haute confiance
-                      </span>
-                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
-                        Intègre immédiatement l'écriture sans blocage dans la file d'attente expert.
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.autoValidateHighConfidence}
-                        onChange={e => onUpdateSettings({ ...settings, autoValidateHighConfidence: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-hidden rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7024E3]"></div>
-                    </label>
+                  {/* Auto-validation retirée : séparation des tâches */}
+                  <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] space-y-0.5">
+                    <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
+                      Validation des écritures
+                    </span>
+                    <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
+                      L'IA et les imports ne valident jamais : toute écriture est validée par un DAF ou un Chef comptable différent de celui qui l'a saisie.
+                    </p>
                   </div>
 
                   {/* Duplicate Detection Toggle */}

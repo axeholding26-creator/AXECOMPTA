@@ -317,10 +317,9 @@ export function buildEntries(ops: ParsedOperation[], { ctx, rawInput, inputType,
       }
       confidence = Math.max(0, Math.min(99, Math.round(confidence)));
 
-      const status: JournalEntry['status'] = anomaly
-        ? 'anomaly'
-        : settings.autoValidateHighConfidence && confidence >= threshold ? 'validated' : 'pending_review';
-      const action: AuditLog['action'] = anomaly ? 'anomaly_flagged' : status === 'validated' ? 'auto_validated' : 'created_by_ai';
+      // Séparation des tâches : l'IA ne valide jamais, un DAF / Chef comptable le fait.
+      const status: JournalEntry['status'] = anomaly ? 'anomaly' : 'pending_review';
+      const action: AuditLog['action'] = anomaly ? 'anomaly_flagged' : 'created_by_ai';
       const ref = op.pieceRef ?? `OP-${Math.floor(1000 + Math.random() * 9000)}`;
       const explanation = explain(op, line.method, op.amount, paid, assumed);
 

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ClientDossier, JournalEntry, AppNotification, NotificationType, NotificationCategory, PlatformSettings } from './types';
+import { ClientDossier, JournalEntry, AppNotification, NotificationType, NotificationCategory, PlatformSettings, Invoice } from './types';
+import { registerCustomAccounts } from './data/syscohadaPlan';
+import { seesAllDossiers } from './utils/roles';
 import { DEFAULT_PLATFORM_SETTINGS } from './data/initialSettings';
 import { soundManager } from './utils/sound';
 import { api } from './utils/api';
@@ -19,6 +21,8 @@ import { TaxCompliance } from './components/expert/TaxCompliance';
 import { AuditTrailModal } from './components/expert/AuditTrailModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
 import { FirstDossierSetup } from './components/onboarding/FirstDossierSetup';
+import { InvoicesPanel } from './components/expert/InvoicesPanel';
+import { ChartOfAccounts } from './components/expert/ChartOfAccounts';
 import { 
   Building2, 
   BookOpen, 
@@ -26,7 +30,9 @@ import {
   Scale, 
   Receipt,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  FileText,
+  ListTree
 } from 'lucide-react';
 
 interface AppProps {
@@ -47,6 +53,9 @@ export default function App({ currentUser, onLogout }: AppProps) {
   const [activeDossierId, setActiveDossierId] = useState<string>('');
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // Incrémenté quand le plan comptable change (les comptes vivent hors de l'état React).
+  const [, setPlanVersion] = useState(0);
 
   // Chargement initial depuis la base de données
   useEffect(() => {
@@ -56,6 +65,8 @@ export default function App({ currentUser, onLogout }: AppProps) {
         const data = await api.getBootstrap();
         if (cancelled) return;
 
+        registerCustomAccounts(data.accounts ?? []);
+        setInvoices(data.invoices ?? []);
         setPlatformSettings(data.settings);
         setCurrentMode(data.settings.defaultStartupView || 'simplified');
         setDossiers(data.dossiers);
@@ -80,7 +91,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
   }, []);
 
   // Expert navigation tab
-  const [expertTab, setExpertTab] = useState<'portfolio' | 'journal' | 'ledger' | 'financials' | 'tax'>('journal');
+  const [expertTab, setExpertTab] = useState<'portfolio' | 'journal' | 'invoices' | 'accounts' | 'ledger' | 'financials' | 'tax'>('journal');
   
   // Modals & Panels
   const [selectedAuditEntry, setSelectedAuditEntry] = useState<JournalEntry | null>(null);
@@ -130,8 +141,11 @@ export default function App({ currentUser, onLogout }: AppProps) {
     );
   }
 
+  // Les écritures annulées restent visibles au journal (traçabilité) mais n'entrent dans aucun calcul.
+  const liveEntries = entries.filter(e => e.status !== 'cancelled');
+
   // Calculated metrics
-  const activeEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
+  const activeEntries = liveEntries.filter(e => e.clientDossierId === activeDossier.id);
   const pendingCount = activeEntries.filter(e => e.status === 'pending_review').length;
   const anomalyCount = activeEntries.filter(e => e.status === 'anomaly').length;
   const unreadNotificationCount = notifications.filter(n => !n.read).length;
@@ -151,7 +165,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
     category: NotificationCategory = 'compta',
     options?: {
       actionLabel?: string;
-      actionPayload?: { mode?: 'simplified' | 'expert'; expertTab?: 'portfolio' | 'journal' | 'ledger' | 'financials' | 'tax' };
+      actionPayload?: { mode?: 'simplified' | 'expert'; expertTab?: 'portfolio' | 'journal' | 'invoices' | 'accounts' | 'ledger' | 'financials' | 'tax' };
       playSound?: boolean;
     }
   ) => {
@@ -229,28 +243,55 @@ export default function App({ currentUser, onLogout }: AppProps) {
     }
   };
 
+  /** Remplace (ou ajoute) des écritures renvoyées par le serveur. */
+  const mergeEntries = (changed: JournalEntry[]) => {
+    const map = new Map(changed.map(e => [e.id, e]));
+    setEntries(prev => [...changed.filter(e => !prev.some(p => p.id === e.id)), ...prev.map(e => map.get(e.id) ?? e)]);
+  };
+
   // Batch validation
   const handleBatchValidate = async (entryIds: string[]) => {
     try {
-      const updated = await api.batchValidateEntries(entryIds);
-      const updatedMap = new Map(updated.map(e => [e.id, e]));
-      setEntries(prev => prev.map(e => updatedMap.get(e.id) ?? e));
-
-      pushNotification(
-        'Validation de lot effectuée',
-        `${entryIds.length} écriture(s) validée(s) avec succès et intégrée(s) au Grand Livre.`,
-        'success',
-        'compta',
-        {
-          actionLabel: 'Ouvrir le Grand Livre',
-          actionPayload: { mode: 'expert', expertTab: 'ledger' }
-        }
-      );
-    } catch (e) {
+      const { validated, refused } = await api.batchValidateEntries(entryIds);
+      mergeEntries(validated);
+      if (validated.length > 0) {
+        pushNotification(
+          'Validation effectuée',
+          `${validated.length} écriture(s) validée(s) et intégrée(s) au Grand Livre.`,
+          'success',
+          'compta',
+          { actionLabel: 'Ouvrir le Grand Livre', actionPayload: { mode: 'expert', expertTab: 'ledger' } }
+        );
+      }
+      if (refused.length > 0) {
+        const reasons = [...new Set(refused.map(r => r.reason))].join(' ');
+        showToast(`${refused.length} écriture(s) non validée(s) : ${reasons}`);
+      }
+    } catch (e: any) {
       console.error('Erreur lors de la validation de lot', e);
-      showToast('Erreur lors de la validation des écritures.');
+      showToast(e?.message || 'Erreur lors de la validation des écritures.');
     }
   };
+
+  // Soumission / dévalidation / annulation d'une écriture
+  const handleEntryAction = async (action: 'submit' | 'unvalidate' | 'cancel', id: string, reason?: string) => {
+    try {
+      const saved = action === 'submit' ? await api.submitEntry(id)
+        : action === 'unvalidate' ? await api.unvalidateEntry(id, reason)
+        : await api.cancelEntry(id, reason);
+      mergeEntries([saved]);
+      showToast(action === 'submit' ? 'Écriture soumise à validation.' : action === 'unvalidate' ? 'Écriture dévalidée.' : 'Écriture annulée.');
+      if (action === 'cancel') {
+        // le lettrage éventuel a été supprimé côté serveur
+        setInvoices(prev => prev.map(inv => ({ ...inv, payments: inv.payments.filter(p => p.entryId !== id) })));
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'Action impossible.');
+    }
+  };
+
+  const upsertInvoice = (inv: Invoice) =>
+    setInvoices(prev => prev.some(i => i.id === inv.id) ? prev.map(i => i.id === inv.id ? inv : i) : [inv, ...prev]);
 
   // Single entry update
   const handleUpdateEntry = async (updatedEntry: JournalEntry) => {
@@ -259,13 +300,13 @@ export default function App({ currentUser, onLogout }: AppProps) {
       setEntries(prev => prev.map(e => e.id === saved.id ? saved : e));
       pushNotification(
         'Écriture mise à jour',
-        `L'écriture "${saved.label}" a été modifiée et validée.`,
+        `L'écriture "${saved.label}" a été modifiée (en attente de validation).`,
         'success',
         'compta'
       );
-    } catch (e) {
+    } catch (e: any) {
       console.error('Erreur lors de la mise à jour de l\'écriture', e);
-      showToast("Erreur lors de la mise à jour de l'écriture.");
+      showToast(e?.message || "Erreur lors de la mise à jour de l'écriture.");
     }
   };
 
@@ -463,7 +504,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
         {/* ================= PAGE DÉDIÉE : TRÉSORERIE & STATISTIQUES ================= */}
         {activePage === 'treasury' && (
           <TreasuryPage
-            entries={entries}
+            entries={liveEntries}
             activeDossier={activeDossier}
             onOpenCreditReady={() => setIsCreditReadyOpen(true)}
             onOpenNewInvoice={() => setIsQuickInvoiceOpen(true)}
@@ -523,6 +564,30 @@ export default function App({ currentUser, onLogout }: AppProps) {
                 </button>
 
                 <button
+                  onClick={() => setExpertTab('invoices')}
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    expertTab === 'invoices'
+                      ? 'bg-gradient-to-r from-[#7024E3] to-[#8B5CF6] text-white shadow-xs'
+                      : 'text-[#C4B5FD] hover:bg-[#2A0E68] hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Factures & Créances</span>
+                </button>
+
+                <button
+                  onClick={() => setExpertTab('accounts')}
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    expertTab === 'accounts'
+                      ? 'bg-gradient-to-r from-[#7024E3] to-[#8B5CF6] text-white shadow-xs'
+                      : 'text-[#C4B5FD] hover:bg-[#2A0E68] hover:text-white'
+                  }`}
+                >
+                  <ListTree className="w-4 h-4" />
+                  <span>Plan comptable</span>
+                </button>
+
+                <button
                   onClick={() => setExpertTab('ledger')}
                   className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     expertTab === 'ledger' 
@@ -575,13 +640,13 @@ export default function App({ currentUser, onLogout }: AppProps) {
               <MultiClientPortfolio
                 dossiers={dossiers}
                 activeDossier={activeDossier}
-                entries={entries}
+                entries={liveEntries}
                 onSelectDossier={(d) => {
                   setActiveDossierId(d.id);
                   setExpertTab('journal');
                 }}
                 onUpdateConfidenceThreshold={handleUpdateConfidenceThreshold}
-                groupByOwner={currentUser.role === 'ADMIN'}
+                groupByOwner={seesAllDossiers(currentUser.role)}
               />
             )}
 
@@ -589,30 +654,54 @@ export default function App({ currentUser, onLogout }: AppProps) {
               <JournalValidation
                 entries={entries}
                 activeDossier={activeDossier}
+                currentUser={currentUser}
                 onBatchValidate={handleBatchValidate}
+                onEntryAction={handleEntryAction}
                 onUpdateEntry={handleUpdateEntry}
                 onViewAuditTrail={(entry) => setSelectedAuditEntry(entry)}
                 onOpenExcelImport={() => setIsExcelImportOpen(true)}
               />
             )}
 
+            {expertTab === 'invoices' && (
+              <InvoicesPanel
+                invoices={invoices.filter(i => i.clientDossierId === activeDossier.id)}
+                entries={activeEntries}
+                activeDossier={activeDossier}
+                currentUser={currentUser}
+                onInvoiceChanged={upsertInvoice}
+                onEntriesChanged={mergeEntries}
+                notify={showToast}
+              />
+            )}
+
+            {expertTab === 'accounts' && (
+              <ChartOfAccounts
+                activeDossier={activeDossier}
+                entries={activeEntries}
+                canEdit={currentUser.role !== 'LECTURE_SEULE'}
+                onChanged={() => setPlanVersion(v => v + 1)}
+                notify={showToast}
+              />
+            )}
+
             {expertTab === 'ledger' && (
               <GeneralLedger
-                entries={entries}
+                entries={liveEntries}
                 activeDossier={activeDossier}
               />
             )}
 
             {expertTab === 'financials' && (
               <FinancialStatements
-                entries={entries}
+                entries={liveEntries}
                 activeDossier={activeDossier}
               />
             )}
 
             {expertTab === 'tax' && (
               <TaxCompliance
-                entries={entries}
+                entries={liveEntries}
                 activeDossier={activeDossier}
               />
             )}
@@ -648,7 +737,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
       {isCreditReadyOpen && (
         <CreditReadyReport
           activeDossier={activeDossier}
-          entries={entries}
+          entries={liveEntries}
           onClose={() => setIsCreditReadyOpen(false)}
         />
       )}
@@ -658,7 +747,11 @@ export default function App({ currentUser, onLogout }: AppProps) {
         <QuickInvoiceModal
           activeDossier={activeDossier}
           onClose={() => setIsQuickInvoiceOpen(false)}
-          onSavedEntry={handleNewEntry}
+          onCreated={(inv) => {
+            upsertInvoice(inv);
+            pushNotification('Facture enregistrée', `Facture ${inv.number} (${inv.totalTTC.toLocaleString('fr-FR')} FCFA) en attente de validation.`, 'info', 'compta',
+              { actionLabel: 'Voir les factures', actionPayload: { mode: 'expert', expertTab: 'invoices' } });
+          }}
         />
       )}
 

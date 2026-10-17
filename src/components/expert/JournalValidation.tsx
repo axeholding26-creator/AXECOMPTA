@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
-import { SYSCOHADA_ACCOUNTS } from '../../data/syscohadaPlan';
+import { SYSCOHADA_ACCOUNTS, accountsForDossier } from '../../data/syscohadaPlan';
+import { CurrentUser } from '../../utils/authApi';
+import { canValidate, canUnvalidate, canWrite, isOwnWork } from '../../utils/roles';
+import { downloadXlsx, fileSafe } from '../../utils/excelExport';
 import { 
   CheckCircle2, 
   Clock, 
@@ -14,13 +17,28 @@ import {
   X,
   Check,
   FileSpreadsheet,
-  Sparkles
+  Sparkles,
+  Send,
+  Undo2,
+  Ban,
+  FilePen
 } from 'lucide-react';
+
+const STATUS_LABEL: Record<JournalEntry['status'], string> = {
+  draft: 'Brouillon',
+  pending_review: 'En attente',
+  anomaly: 'Anomalie',
+  validated: 'Validée',
+  cancelled: 'Annulée',
+};
+const EDITABLE: JournalEntry['status'][] = ['draft', 'pending_review', 'anomaly'];
 
 interface JournalValidationProps {
   entries: JournalEntry[];
   activeDossier: ClientDossier;
+  currentUser: CurrentUser;
   onBatchValidate: (entryIds: string[]) => void;
+  onEntryAction: (action: 'submit' | 'unvalidate' | 'cancel', id: string, reason?: string) => void;
   onUpdateEntry: (updatedEntry: JournalEntry) => void;
   onViewAuditTrail: (entry: JournalEntry) => void;
   onOpenExcelImport?: () => void;
@@ -29,7 +47,9 @@ interface JournalValidationProps {
 export const JournalValidation: React.FC<JournalValidationProps> = ({
   entries,
   activeDossier,
+  currentUser,
   onBatchValidate,
+  onEntryAction,
   onUpdateEntry,
   onViewAuditTrail,
   onOpenExcelImport
@@ -46,13 +66,20 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
   const [editAmount, setEditAmount] = useState<number>(0);
 
   const dossierEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
+  const accounts = accountsForDossier(activeDossier.id);
+  const validator = canValidate(currentUser.role);
+  const chief = canUnvalidate(currentUser.role);
+  const writer = canWrite(currentUser.role);
+  const canValidateEntry = (e: JournalEntry) =>
+    validator && (e.status === 'pending_review' || e.status === 'anomaly') && !isOwnWork(e, currentUser.id);
+  const askReason = (what: string) => window.prompt(`Motif de ${what} (facultatif) :`, '');
 
   // Assistant IA du cabinet : résumé du dossier et suggestion de validation en lot
   const [aiSummary, setAiSummary] = useState<{ summary: string; points: string[] } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const reliableIds = dossierEntries
-    .filter(e => e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= activeDossier.confidenceThreshold)
+    .filter(e => e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= activeDossier.confidenceThreshold && !isOwnWork(e, currentUser.id))
     .map(e => e.id);
 
   const loadAiSummary = async () => {
@@ -124,7 +151,8 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
       debitAccount: debitAcc ? `${debitAcc.code} - ${debitAcc.label}` : editDebitCode,
       creditAccountCode: editCreditCode,
       creditAccount: creditAcc ? `${creditAcc.code} - ${creditAcc.label}` : editCreditCode,
-      status: 'validated',
+      // Une correction ne valide jamais : l'écriture repasse en attente (sauf brouillon).
+      status: editingEntry.status === 'draft' ? 'draft' : 'pending_review',
       detectedAnomaly: undefined,
       auditTrail: [
         ...editingEntry.auditTrail,
@@ -132,7 +160,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
           id: `aud-${Date.now()}`,
           timestamp: new Date().toISOString(),
           action: 'edited_by_expert',
-          author: 'Cabinet KM Consulting (Superviseur)',
+          author: currentUser.name,
           notes: `Correction d'imputation : Débit ${editDebitCode}, Crédit ${editCreditCode}`
         }
       ]
@@ -140,6 +168,16 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
 
     onUpdateEntry(updated);
     setEditingEntry(null);
+  };
+
+  const exportXlsx = () => {
+    downloadXlsx(`Journal_${fileSafe(activeDossier.name)}_${new Date().toISOString().slice(0, 10)}`, [{
+      name: 'Journal',
+      rows: [
+        ['Date', 'Pièce', 'Libellé', 'Compte débit', 'Compte crédit', 'Montant', 'TVA', 'Statut'],
+        ...filteredEntries.map(e => [e.date, e.pieceRef, e.label, e.debitAccount, e.creditAccount, e.amount, e.tvaAmount, STATUS_LABEL[e.status]]),
+      ],
+    }]);
   };
 
   // Export to CSV
@@ -182,7 +220,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Batch Validation Button */}
-          {selectedIds.length > 0 && (
+          {validator && selectedIds.length > 0 && (
             <button
               onClick={() => {
                 onBatchValidate(selectedIds);
@@ -214,6 +252,13 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
             <Download className="w-3.5 h-3.5 text-[#7024E3]" />
             <span>Export CSV</span>
           </button>
+          <button
+            onClick={exportXlsx}
+            className="px-3.5 py-2 bg-[#F8F7FD] text-[#1E084A] text-xs font-bold rounded-xl border border-[#DDD6FE] hover:bg-[#EDE9FE] flex items-center gap-1.5 transition-colors shadow-2xs"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[#10B981]" />
+            <span>Export Excel</span>
+          </button>
         </div>
       </div>
 
@@ -232,14 +277,14 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
             >
               {aiLoading ? 'Analyse en cours…' : 'Résumé IA du dossier'}
             </button>
-            <button
+            {validator && <button
               onClick={() => reliableIds.length && onBatchValidate(reliableIds)}
               disabled={reliableIds.length === 0}
               title={`Écritures en attente, sans anomalie, avec une confiance ≥ ${activeDossier.confidenceThreshold}%`}
               className="px-3 py-1.5 bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-xs font-bold rounded-lg shadow-2xs disabled:opacity-40"
             >
               Valider les écritures fiables ({reliableIds.length})
-            </button>
+            </button>}
           </div>
         </div>
         {aiError && <p className="text-xs text-[#B91C1C]">{aiError}</p>}
@@ -270,6 +315,15 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
             }`}
           >
             Tous ({dossierEntries.length})
+          </button>
+          <button
+            onClick={() => setFilterStatus('draft')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
+              filterStatus === 'draft' ? 'bg-[#64748B] text-white shadow-2xs' : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
+            }`}
+          >
+            <FilePen className="w-3.5 h-3.5" />
+            <span>Brouillons ({dossierEntries.filter(e => e.status === 'draft').length})</span>
           </button>
           <button
             onClick={() => setFilterStatus('pending_review')}
@@ -303,6 +357,15 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Validés ({dossierEntries.filter(e => e.status === 'validated').length})</span>
+          </button>
+          <button
+            onClick={() => setFilterStatus('cancelled')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
+              filterStatus === 'cancelled' ? 'bg-[#475569] text-white shadow-2xs' : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
+            }`}
+          >
+            <Ban className="w-3.5 h-3.5" />
+            <span>Annulées ({dossierEntries.filter(e => e.status === 'cancelled').length})</span>
           </button>
         </div>
 
@@ -446,18 +509,39 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                           <AlertTriangle className="w-3 h-3 text-[#DC2626]" /> Anomalie
                         </span>
                       )}
+                      {entry.status === 'draft' && (
+                        <span className="px-2.5 py-0.5 bg-[#F1F5F9] text-[#475569] border border-[#CBD5E1] text-[11px] font-bold rounded-full inline-flex items-center gap-1">
+                          <FilePen className="w-3 h-3" /> Brouillon
+                        </span>
+                      )}
+                      {entry.status === 'cancelled' && (
+                        <span className="px-2.5 py-0.5 bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] text-[11px] font-bold rounded-full inline-flex items-center gap-1 line-through">
+                          <Ban className="w-3 h-3" /> Annulée
+                        </span>
+                      )}
                     </td>
 
                     {/* Actions */}
                     <td className="p-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => startEdit(entry)}
-                          className="p-1.5 text-[#1E084A] hover:bg-[#F5F3FF] rounded-lg transition-colors"
-                          title="Modifier l'imputation comptable"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                        {writer && EDITABLE.includes(entry.status) && !entry.invoiceId && (
+                          <button
+                            onClick={() => startEdit(entry)}
+                            className="p-1.5 text-[#1E084A] hover:bg-[#F5F3FF] rounded-lg transition-colors"
+                            title="Modifier l'imputation comptable"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {writer && entry.status === 'draft' && (
+                          <button
+                            onClick={() => onEntryAction('submit', entry.id)}
+                            className="p-1.5 text-[#7024E3] hover:bg-[#F5F3FF] rounded-lg transition-colors"
+                            title="Soumettre à validation"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => onViewAuditTrail(entry)}
                           className="p-1.5 text-[#1E084A] hover:bg-[#F5F3FF] rounded-lg transition-colors"
@@ -465,13 +549,36 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                         >
                           <History className="w-3.5 h-3.5" />
                         </button>
-                        {entry.status !== 'validated' && (
+                        {canValidateEntry(entry) && (
                           <button
                             onClick={() => onBatchValidate([entry.id])}
                             className="p-1.5 text-[#10B981] hover:bg-[#F0FDF4] rounded-lg transition-colors"
-                            title="Valider immédiatement cette écriture"
+                            title="Validation définitive"
                           >
                             <Check className="w-4 h-4 font-bold" />
+                          </button>
+                        )}
+                        {validator && (entry.status === 'pending_review' || entry.status === 'anomaly') && isOwnWork(entry, currentUser.id) && (
+                          <span className="p-1.5 text-[#C4B5FD] cursor-help" title="Séparation des tâches : vous avez saisi ou modifié cette écriture, un autre valideur doit la valider.">
+                            <Check className="w-4 h-4" />
+                          </span>
+                        )}
+                        {chief && entry.status === 'validated' && !entry.invoiceId && (
+                          <button
+                            onClick={() => { const r = askReason('la dévalidation'); if (r !== null) onEntryAction('unvalidate', entry.id, r); }}
+                            className="p-1.5 text-[#D97706] hover:bg-[#FEF3C7] rounded-lg transition-colors"
+                            title="Dévalider (Chef comptable)"
+                          >
+                            <Undo2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {chief && entry.status !== 'cancelled' && !entry.invoiceId && (
+                          <button
+                            onClick={() => { const r = askReason("l'annulation"); if (r !== null) onEntryAction('cancel', entry.id, r); }}
+                            className="p-1.5 text-[#DC2626] hover:bg-[#FEE2E2] rounded-lg transition-colors"
+                            title="Annuler l'écriture (Chef comptable)"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
@@ -526,7 +633,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                     onChange={(e) => setEditDebitCode(e.target.value)}
                     className="w-full p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-xl font-mono text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
                   >
-                    {SYSCOHADA_ACCOUNTS.map(a => (
+                    {accounts.map(a => (
                       <option key={a.code} value={a.code}>
                         {a.code} - {a.label.slice(0, 30)}...
                       </option>
@@ -541,7 +648,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                     onChange={(e) => setEditCreditCode(e.target.value)}
                     className="w-full p-2.5 bg-[#F8F7FD] border border-[#DDD6FE] rounded-xl font-mono text-[#1E084A] focus:outline-none focus:ring-2 focus:ring-[#7024E3]/30"
                   >
-                    {SYSCOHADA_ACCOUNTS.map(a => (
+                    {accounts.map(a => (
                       <option key={a.code} value={a.code}>
                         {a.code} - {a.label.slice(0, 30)}...
                       </option>
@@ -562,7 +669,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                   type="submit"
                   className="px-5 py-2 bg-gradient-to-r from-[#7024E3] to-[#8B5CF6] text-white font-bold rounded-xl shadow-xs hover:from-[#5B18C4] hover:to-[#7024E3] transition-all"
                 >
-                  Enregistrer & Valider
+                  Enregistrer
                 </button>
               </div>
             </form>

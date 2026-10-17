@@ -11,7 +11,9 @@ interface AdminPageProps {
 
 const roleLabel: Record<ManagedUser['role'], string> = {
   ADMIN: 'Administrateur',
-  COMPTABLE: 'Comptable',
+  CHEF_COMPTABLE: 'Chef comptable',
+  DAF: 'DAF',
+  COMPTABLE: 'Comptable (saisie)',
   LECTURE_SEULE: 'Lecture seule',
 };
 

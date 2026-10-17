@@ -1,11 +1,20 @@
-import type { ClientDossier, JournalEntry, AppNotification, PlatformSettings } from '../types';
+import type { ClientDossier, JournalEntry, AppNotification, PlatformSettings, SYSCOHADAAccount, Invoice, InvoiceInput } from '../types';
 
 export interface BootstrapData {
   dossiers: ClientDossier[];
   entries: JournalEntry[];
   notifications: AppNotification[];
   settings: PlatformSettings;
+  accounts: SYSCOHADAAccount[];
+  invoices: Invoice[];
 }
+
+export interface BatchValidateResult {
+  validated: JournalEntry[];
+  refused: { id: string; reason: string }[];
+}
+export interface InvoiceWithEntries { invoice: Invoice; entries: JournalEntry[] }
+const post = (body?: unknown): RequestInit => ({ method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
 /**
  * Client API AxeCompta.
@@ -46,8 +55,28 @@ export const api = {
     request<JournalEntry[]>('/entries/import', { method: 'POST', body: JSON.stringify({ entries }) }),
   updateEntry: (entry: JournalEntry) =>
     request<JournalEntry>(`/entries/${entry.id}/update`, { method: 'POST', body: JSON.stringify(entry) }),
-  batchValidateEntries: (ids: string[]) =>
-    request<JournalEntry[]>('/entries/batch-validate', { method: 'POST', body: JSON.stringify({ ids }) }),
+  batchValidateEntries: (ids: string[]) => request<BatchValidateResult>('/entries/batch-validate', post({ ids })),
+  submitEntry: (id: string) => request<JournalEntry>(`/entries/${id}/submit`, post({})),
+  unvalidateEntry: (id: string, reason?: string) => request<JournalEntry>(`/entries/${id}/unvalidate`, post({ reason })),
+  cancelEntry: (id: string, reason?: string) => request<JournalEntry>(`/entries/${id}/cancel`, post({ reason })),
+
+  // Plan comptable (sous-comptes propres à un dossier)
+  createAccount: (a: { dossierId: string; parentCode: string; code: string; label: string }) =>
+    request<SYSCOHADAAccount>('/accounts', post(a)),
+  updateAccount: (code: string, data: { label?: string; active?: boolean }) =>
+    request<SYSCOHADAAccount>(`/accounts/${code}/update`, post(data)),
+
+  // Factures & lettrage
+  createInvoice: (dossierId: string, input: InvoiceInput, submit: boolean) =>
+    request<Invoice>('/invoices', post({ ...input, clientDossierId: dossierId, submit })),
+  updateInvoice: (id: string, input: InvoiceInput, submit: boolean) =>
+    request<Invoice>(`/invoices/${id}/update`, post({ ...input, submit })),
+  submitInvoice: (id: string) => request<Invoice>(`/invoices/${id}/submit`, post({})),
+  validateInvoice: (id: string) => request<InvoiceWithEntries>(`/invoices/${id}/validate`, post({})),
+  cancelInvoice: (id: string, reason?: string) => request<InvoiceWithEntries>(`/invoices/${id}/cancel`, post({ reason })),
+  letterPayment: (invoiceId: string, body: { entryId: string; amount?: number } | { newPayment: { date: string; amount: number; paymentMethod: string } }) =>
+    request<{ invoice: Invoice; entry: JournalEntry }>(`/invoices/${invoiceId}/payments`, post(body)),
+  unletterPayment: (paymentId: string) => request<Invoice>(`/invoice-payments/${paymentId}/delete`, post({})),
 
   // Notifications
   createNotification: (notification: AppNotification) =>

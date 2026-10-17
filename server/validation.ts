@@ -7,10 +7,14 @@
  */
 
 export const REGIMES_FISCAUX = ['Réel Simplifié', 'Réel Normal', 'Synthétique / Forfait'] as const;
-export const TRANSACTION_STATUSES = ['validated', 'pending_review', 'anomaly'] as const;
+export const TRANSACTION_STATUSES = ['draft', 'pending_review', 'anomaly', 'validated', 'cancelled'] as const;
+/** Statuts qu'un saisisseur peut demander : la validation passe toujours par une route dédiée. */
+export const ENTRY_STATUSES = ['draft', 'pending_review', 'anomaly'] as const;
 export const INPUT_MODES = ['text', 'voice', 'photo', 'mobile_money', 'manual', 'excel_import'] as const;
 export const PAYMENT_METHODS = ['cash', 'orange_money', 'mtn_momo', 'wave', 'moov_money', 'bank_transfer', 'cheque'] as const;
-export const AUDIT_ACTIONS = ['created_by_ai', 'validated_by_expert', 'auto_validated', 'edited_by_expert', 'anomaly_flagged'] as const;
+export const AUDIT_ACTIONS = ['created_by_ai', 'validated_by_expert', 'auto_validated', 'edited_by_expert', 'anomaly_flagged', 'submitted_for_review', 'unvalidated', 'cancelled'] as const;
+/** Actions que le client peut journaliser lui-même (les autres sont écrites par le serveur). */
+const CLIENT_AUDIT_ACTIONS = ['created_by_ai', 'edited_by_expert', 'anomaly_flagged'] as const;
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -31,7 +35,7 @@ function text(value: unknown, max = 160): string | null {
   return trimmed;
 }
 
-function optionalText(value: unknown, max = MAX_TEXT): string | null {
+export function optionalText(value: unknown, max = MAX_TEXT): string | null {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -124,12 +128,13 @@ export interface EntryInput {
   auditTrail: AuditLogInput[];
 }
 
-function parseAuditTrail(value: unknown): AuditLogInput[] {
+function parseAuditTrail(value: unknown, trusted = false): AuditLogInput[] {
   if (!Array.isArray(value)) return [];
   const rows: AuditLogInput[] = [];
   for (const raw of value.slice(0, 100)) {
     const a = (raw ?? {}) as Record<string, unknown>;
-    const action = oneOf(a.action, AUDIT_ACTIONS);
+    const action = oneOf(a.action, trusted ? AUDIT_ACTIONS : CLIENT_AUDIT_ACTIONS);
+    if (a.action !== undefined && !action) continue; // validation/annulation : jamais acceptées du client
     const author = optionalText(a.author, 120) ?? 'Agent AxeCompta';
     const notes = optionalText(a.notes) ?? undefined;
     const previousValue = optionalText(a.previousValue) ?? undefined;
@@ -147,7 +152,11 @@ function parseAuditTrail(value: unknown): AuditLogInput[] {
   return rows;
 }
 
-export function validateEntryInput(body: unknown, options: { requireId?: boolean } = {}): Result<EntryInput> {
+/**
+ * `trusted` (restauration de sauvegarde par un profil habilité à valider) : statut et piste
+ * d'audit d'origine conservés. Sinon, une écriture arrive au mieux "en attente".
+ */
+export function validateEntryInput(body: unknown, options: { requireId?: boolean; trusted?: boolean } = {}): Result<EntryInput> {
   const b = (body ?? {}) as Record<string, unknown>;
   const date = isoDate(b.date);
   const label = text(b.label, 300);
@@ -156,7 +165,8 @@ export function validateEntryInput(body: unknown, options: { requireId?: boolean
   const creditAccountCode = text(b.creditAccountCode, 20);
   const amount = money(b.amount);
   const tvaAmount = money(b.tvaAmount ?? 0);
-  const status = oneOf(b.status, TRANSACTION_STATUSES);
+  // Toute écriture saisie arrive au mieux "en attente" : un statut "validé" envoyé par le client est ignoré.
+  const status = oneOf(b.status, options.trusted ? TRANSACTION_STATUSES : ENTRY_STATUSES) ?? 'pending_review';
   const inputType = oneOf(b.inputType, INPUT_MODES);
   const paymentMethod = oneOf(b.paymentMethod, PAYMENT_METHODS);
   const explanationSimplified = optionalText(b.explanationSimplified) ?? '';
@@ -175,7 +185,6 @@ export function validateEntryInput(body: unknown, options: { requireId?: boolean
   if (amount === null || amount <= 0) return { ok: false, error: 'Montant invalide (strictement positif attendu).' };
   if (tvaAmount === null) return { ok: false, error: 'Montant de TVA invalide.' };
   if (tvaAmount > amount) return { ok: false, error: 'La TVA ne peut pas dépasser le montant TTC.' };
-  if (!status) return { ok: false, error: 'Statut d\'écriture invalide.' };
   if (!inputType) return { ok: false, error: 'Mode de saisie invalide.' };
   if (!paymentMethod) return { ok: false, error: 'Mode de paiement invalide.' };
 
@@ -184,7 +193,7 @@ export function validateEntryInput(body: unknown, options: { requireId?: boolean
     data: {
       id: id ?? undefined, date, label, pieceRef, debitAccountCode, creditAccountCode,
       amount, tvaAmount, status, confidenceScore, detectedAnomaly, rawInput, inputType,
-      explanationSimplified, paymentMethod, auditTrail: parseAuditTrail(b.auditTrail),
+      explanationSimplified, paymentMethod, auditTrail: parseAuditTrail(b.auditTrail, options.trusted),
     },
   };
 }
@@ -197,7 +206,7 @@ export interface NotificationInput {
 const NOTIFICATION_TYPES = ['info', 'success', 'warning', 'error'] as const;
 const NOTIFICATION_CATEGORIES = ['compta', 'fiscal', 'tresorerie', 'ia', 'system'] as const;
 const STARTUP_VIEWS = ['simplified', 'expert'] as const;
-const EXPERT_TABS = ['portfolio', 'journal', 'ledger', 'financials', 'tax'] as const;
+const EXPERT_TABS = ['portfolio', 'journal', 'invoices', 'accounts', 'ledger', 'financials', 'tax'] as const;
 
 export function validateNotificationInput(body: unknown): Result<NotificationInput> {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -259,4 +268,96 @@ export function validateSettingsInput(body: unknown): Result<Record<string, unkn
       notifyOnMobileMoneySync: s.notifyOnMobileMoneySync !== false,
     },
   };
+}
+
+// ---------- Plan comptable ----------
+
+export interface AccountInput { code: string; label: string; parentCode: string; dossierId: string }
+
+export function validateAccountInput(body: unknown): Result<AccountInput> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const code = typeof b.code === 'string' ? b.code.trim() : '';
+  const parentCode = typeof b.parentCode === 'string' ? b.parentCode.trim() : '';
+  const label = text(b.label, 120);
+  const dossierId = identifier(b.dossierId);
+  if (!/^[1-9][0-9]{2,11}$/.test(code)) return { ok: false, error: 'Code de compte invalide (3 à 12 chiffres).' };
+  if (!/^[1-9][0-9]{2,11}$/.test(parentCode)) return { ok: false, error: 'Compte parent invalide.' };
+  // Même compte principal SYSCOHADA (3 premiers chiffres) : 5211 Banques → 5212 Ecobank, 52111…
+  if (code === parentCode || !code.startsWith(parentCode.slice(0, 3))) {
+    return { ok: false, error: `Le sous-compte doit commencer par ${parentCode.slice(0, 3)} (même compte principal que ${parentCode}).` };
+  }
+  if (!label) return { ok: false, error: 'Libellé du compte requis.' };
+  if (!dossierId) return { ok: false, error: 'Dossier invalide.' };
+  return { ok: true, data: { code, label, parentCode, dossierId } };
+}
+
+// ---------- Factures ----------
+
+export interface InvoiceInputData {
+  date: string; dueDate: string; mode: 'cash' | 'credit'; paymentMethod: string | null;
+  customerName: string; customerPhone: string | null; customerEmail: string | null;
+  customerAddress: string | null; customerTaxId: string | null;
+  customerAccountCode: string; salesAccountCode: string; vatRate: number;
+  paymentTerms: string | null; notes: string | null;
+  lines: { description: string; quantity: number; unitPrice: number }[];
+}
+
+export function validateInvoiceInput(body: unknown): Result<InvoiceInputData> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const date = isoDate(b.date);
+  const mode = oneOf(b.mode, ['cash', 'credit'] as const);
+  const paymentMethod = oneOf(b.paymentMethod, PAYMENT_METHODS);
+  const customerName = text(b.customerName, 160);
+  const customerAccountCode = (typeof b.customerAccountCode === 'string' && b.customerAccountCode.trim()) || '4111';
+  const salesAccountCode = (typeof b.salesAccountCode === 'string' && b.salesAccountCode.trim()) || '7011';
+  const vat = Number(b.vatRate ?? 0);
+  const rawLines = Array.isArray(b.lines) ? b.lines.slice(0, 200) : [];
+  const lines: InvoiceInputData['lines'] = [];
+  for (const raw of rawLines) {
+    const l = (raw ?? {}) as Record<string, unknown>;
+    const description = text(l.description, 300);
+    const quantity = Number(l.quantity);
+    const unitPrice = money(l.unitPrice);
+    if (!description) return { ok: false, error: 'Chaque ligne doit avoir une désignation.' };
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) return { ok: false, error: `Quantité invalide pour « ${description} ».` };
+    if (unitPrice === null) return { ok: false, error: `Prix unitaire invalide pour « ${description} ».` };
+    lines.push({ description, quantity: Math.round(quantity * 1000) / 1000, unitPrice });
+  }
+
+  if (!date) return { ok: false, error: 'Date de facture invalide.' };
+  if (!mode) return { ok: false, error: 'Mode de facture invalide (comptant ou crédit).' };
+  if (mode === 'cash' && !paymentMethod) return { ok: false, error: 'Mode de règlement requis pour une facture au comptant.' };
+  if (!customerName) return { ok: false, error: 'Nom du client requis.' };
+  if (!/^411[0-9]{0,9}$/.test(customerAccountCode)) return { ok: false, error: 'Le compte client doit être un compte 411.' };
+  if (!/^70[0-9]{1,10}$/.test(salesAccountCode)) return { ok: false, error: 'Le compte de vente doit être un compte 70x.' };
+  if (!Number.isFinite(vat) || vat < 0 || vat > 100) return { ok: false, error: 'Taux de TVA invalide.' };
+  if (lines.length === 0) return { ok: false, error: 'La facture doit contenir au moins une ligne.' };
+  const dueDate = mode === 'cash' ? date : (isoDate(b.dueDate) ?? date);
+  if (dueDate < date) return { ok: false, error: "L'échéance ne peut pas précéder la date de facture." };
+
+  return {
+    ok: true,
+    data: {
+      date, dueDate, mode, paymentMethod: mode === 'cash' ? paymentMethod : null,
+      customerName,
+      customerPhone: optionalText(b.customerPhone, 40),
+      customerEmail: optionalText(b.customerEmail, 160),
+      customerAddress: optionalText(b.customerAddress, 300),
+      customerTaxId: optionalText(b.customerTaxId, 60),
+      customerAccountCode, salesAccountCode, vatRate: Math.round(vat * 100) / 100,
+      paymentTerms: optionalText(b.paymentTerms, 300),
+      notes: optionalText(b.notes, MAX_TEXT),
+      lines,
+    },
+  };
+}
+
+export function positiveMoney(value: unknown): number | null {
+  const n = money(value);
+  return n !== null && n > 0 ? n : null;
+}
+
+/** Motif facultatif d'une dévalidation / annulation. */
+export function optionalReason(body: unknown): string | null {
+  return optionalText(((body ?? {}) as Record<string, unknown>).reason, 300);
 }

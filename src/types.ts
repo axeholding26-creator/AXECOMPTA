@@ -1,4 +1,5 @@
-export type TransactionStatus = 'validated' | 'pending_review' | 'anomaly';
+/** Cycle de vie : draft → pending_review (ou anomaly) → validated → cancelled */
+export type TransactionStatus = 'draft' | 'pending_review' | 'anomaly' | 'validated' | 'cancelled';
 
 export type InputMode = 'text' | 'voice' | 'photo' | 'mobile_money' | 'manual' | 'excel_import';
 
@@ -14,7 +15,7 @@ export type PaymentMethod =
 export interface AuditLog {
   id: string;
   timestamp: string;
-  action: 'created_by_ai' | 'validated_by_expert' | 'auto_validated' | 'edited_by_expert' | 'anomaly_flagged';
+  action: 'created_by_ai' | 'validated_by_expert' | 'auto_validated' | 'edited_by_expert' | 'anomaly_flagged' | 'submitted_for_review' | 'unvalidated' | 'cancelled';
   author: string;
   notes?: string;
   previousValue?: string;
@@ -41,6 +42,13 @@ export interface JournalEntry {
   explanationSimplified: string;
   paymentMethod: PaymentMethod;
   auditTrail: AuditLog[];
+  // Renseignés par le serveur (séparation des tâches)
+  createdById?: string;
+  updatedById?: string;
+  validatedById?: string;
+  validatedAt?: string;
+  /** Facture à l'origine de l'écriture (écritures générées automatiquement). */
+  invoiceId?: string;
 }
 
 export interface SYSCOHADAAccount {
@@ -48,6 +56,75 @@ export interface SYSCOHADAAccount {
   label: string;
   classNumber: number;
   category: 'bilan_actif' | 'bilan_passif' | 'charge' | 'produit' | 'tresorerie';
+  /** Compte personnalisé : compte parent, dossier propriétaire, actif ou non. */
+  parentCode?: string;
+  dossierId?: string;
+  active?: boolean;
+}
+
+export type InvoiceStatus = 'draft' | 'pending_review' | 'validated' | 'cancelled';
+
+export interface InvoiceLine {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  amountHT: number;
+}
+
+export interface InvoicePayment {
+  id: string;
+  entryId: string;
+  amount: number;
+  createdAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  clientDossierId: string;
+  number: string;
+  date: string;
+  dueDate: string;
+  mode: 'cash' | 'credit';
+  paymentMethod?: PaymentMethod;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerTaxId?: string;
+  customerAccountCode: string;
+  salesAccountCode: string;
+  vatRate: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  paymentTerms?: string;
+  notes?: string;
+  status: InvoiceStatus;
+  createdById?: string;
+  updatedById?: string;
+  validatedById?: string;
+  validatedAt?: string;
+  lines: InvoiceLine[];
+  payments: InvoicePayment[];
+}
+
+/** Données saisies dans le formulaire de facture (totaux recalculés par le serveur). */
+export interface InvoiceInput {
+  date: string;
+  dueDate?: string;
+  mode: 'cash' | 'credit';
+  paymentMethod?: PaymentMethod;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerTaxId?: string;
+  customerAccountCode?: string;
+  salesAccountCode?: string;
+  vatRate: number;
+  paymentTerms?: string;
+  notes?: string;
+  lines: { description: string; quantity: number; unitPrice: number }[];
 }
 
 export interface ClientDossier {
@@ -117,7 +194,7 @@ export interface AppNotification {
   actionLabel?: string;
   actionPayload?: {
     mode?: 'simplified' | 'expert';
-    expertTab?: 'portfolio' | 'journal' | 'ledger' | 'financials' | 'tax';
+    expertTab?: 'portfolio' | 'journal' | 'invoices' | 'accounts' | 'ledger' | 'financials' | 'tax';
   };
 }
 

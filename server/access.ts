@@ -18,25 +18,50 @@ export function isAdminRequest(req: Request): boolean {
   return getAuthUser(req)?.role === 'ADMIN';
 }
 
+/**
+ * Rôles comptables :
+ * - COMPTABLE : saisie (brouillon / en attente), voit ses propres dossiers ;
+ * - DAF : validation définitive, voit tous les dossiers ;
+ * - CHEF_COMPTABLE : validation + dévalidation / annulation, voit tous les dossiers ;
+ * - ADMIN : tous les droits (la séparation des tâches s'applique quand même).
+ */
+export function seesAllDossiers(role?: string): boolean {
+  return role === 'ADMIN' || role === 'DAF' || role === 'CHEF_COMPTABLE';
+}
+export function canValidate(role?: string): boolean {
+  return role === 'ADMIN' || role === 'DAF' || role === 'CHEF_COMPTABLE';
+}
+export function canUnvalidate(role?: string): boolean {
+  return role === 'ADMIN' || role === 'CHEF_COMPTABLE';
+}
+
+/** Nom affiché dans la piste d'audit (jamais fourni par le client). */
+export async function actorName(req: Request): Promise<string> {
+  const user = getAuthUser(req);
+  if (!user) return 'Inconnu';
+  const row = await prisma.user.findUnique({ where: { id: user.sub }, select: { name: true } });
+  return row?.name ?? user.email;
+}
+
 /** Drapeau `where` Prisma restreignant la lecture aux dossiers visibles par le requérant. */
 export function dossierScopeWhere(req: Request): Record<string, unknown> {
   const user = getAuthUser(req);
   if (!user) return { ownerId: '__aucun__' }; // jamais satisfait : requête non authentifiée
-  return user.role === 'ADMIN' ? {} : { ownerId: user.sub };
+  return seesAllDossiers(user.role) ? {} : { ownerId: user.sub };
 }
 
 /** Drapeau `where` pour les écritures visibles (rattachées à un dossier accessible). */
 export function entryScopeWhere(req: Request): Record<string, unknown> {
   const user = getAuthUser(req);
   if (!user) return { clientDossier: { ownerId: '__aucun__' } };
-  return user.role === 'ADMIN' ? {} : { clientDossier: { ownerId: user.sub } };
+  return seesAllDossiers(user.role) ? {} : { clientDossier: { ownerId: user.sub } };
 }
 
 /** Drapeau `where` pour les notifications visibles. */
 export function notificationScopeWhere(req: Request): Record<string, unknown> {
   const user = getAuthUser(req);
   if (!user) return { dossier: { ownerId: '__aucun__' } };
-  return user.role === 'ADMIN' ? {} : { dossier: { ownerId: user.sub } };
+  return seesAllDossiers(user.role) ? {} : { dossier: { ownerId: user.sub } };
 }
 
 /**
@@ -48,7 +73,7 @@ export async function findAccessibleDossier(req: Request, dossierId: string) {
   if (!user) return null;
   const dossier = await prisma.clientDossier.findUnique({ where: { id: dossierId } });
   if (!dossier) return null;
-  if (user.role !== 'ADMIN' && dossier.ownerId !== user.sub) return null;
+  if (!seesAllDossiers(user.role) && dossier.ownerId !== user.sub) return null;
   return dossier;
 }
 
@@ -58,7 +83,7 @@ export async function findAccessibleEntry(req: Request, entryId: string) {
   if (!user) return null;
   const entry = await prisma.journalEntry.findUnique({ where: { id: entryId } });
   if (!entry) return null;
-  if (user.role !== 'ADMIN') {
+  if (!seesAllDossiers(user.role)) {
     const dossier = await prisma.clientDossier.findUnique({ where: { id: entry.clientDossierId } });
     if (!dossier || dossier.ownerId !== user.sub) return null;
   }

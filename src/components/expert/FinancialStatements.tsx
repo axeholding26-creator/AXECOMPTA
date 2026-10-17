@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
 import { computeFinancialReport } from '../../utils/analytics';
-import { Printer } from 'lucide-react';
+import { Printer, FileSpreadsheet } from 'lucide-react';
+import { downloadXlsx, fileSafe } from '../../utils/excelExport';
 
 interface FinancialStatementsProps {
   entries: JournalEntry[];
@@ -44,6 +45,49 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
   const calculatedReserves = Math.max(0, report.totalPassif - capital1 - netProfit - debts4);
   const totalPassif = report.totalPassif;
 
+  const exportXlsx = () => {
+    const r = report;
+    downloadXlsx(`Etats_Financiers_${fileSafe(activeDossier.name)}_${new Date().toISOString().slice(0, 10)}`, [
+      {
+        name: 'Bilan',
+        rows: [
+          ['ACTIF', 'Montant', '', 'PASSIF', 'Montant'],
+          ['Immobilisations brutes', r.immobilisationsBrutes, '', 'Capital et réserves', r.capital],
+          ['Amortissements', -r.amortissements, '', 'Résultat net de l\'exercice', r.resultatBilan],
+          ['Immobilisations nettes', r.immobilisationsNettes, '', 'Dettes (fournisseurs, fiscales, sociales)', r.dettes],
+          ['Stocks', r.stocks, '', '', ''],
+          ['Créances', r.creances, '', '', ''],
+          ['Trésorerie actif', r.treasury, '', '', ''],
+          ['TOTAL ACTIF', r.totalActif, '', 'TOTAL PASSIF', r.totalPassif],
+          [],
+          ['Écart actif - passif', r.imbalance],
+        ],
+      },
+      {
+        name: 'Compte de résultat',
+        rows: [
+          ['Rubrique', 'Montant HT'],
+          ['Chiffre d\'affaires (70)', r.revenue],
+          ['Autres produits (71-75)', r.otherIncome],
+          ['Achats (60-61)', -r.purchases],
+          ['Marge brute', r.grossMargin],
+          ['Services extérieurs (62-63)', -r.services],
+          ['Valeur ajoutée', r.addedValue],
+          ['Impôts et taxes (64)', -r.taxes],
+          ['Charges de personnel (66)', -r.personnel],
+          ['Excédent brut d\'exploitation', r.ebe],
+          ['Dotations aux amortissements (68)', -r.depreciation],
+          ['Résultat d\'exploitation', r.operatingResult],
+          ['Résultat financier', r.financialResult],
+          ['Résultat HAO', r.haoResult],
+          ['Résultat avant impôt', r.resultBeforeTax],
+          [r.corporateTaxEstimated ? 'Impôt sur le résultat (estimé 25 %)' : 'Impôt sur le résultat (89)', -r.corporateTax],
+          ['RÉSULTAT NET', r.netProfit],
+        ],
+      },
+    ]);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header with Switcher & Actions */}
@@ -85,6 +129,13 @@ export const FinancialStatements: React.FC<FinancialStatementsProps> = ({
             </button>
           </div>
 
+          <button
+            onClick={exportXlsx}
+            className="p-2.5 bg-[#F8F7FD] text-[#1E084A] rounded-xl border border-[#DDD6FE] hover:bg-[#EDE9FE] transition-colors shadow-2xs"
+            title="Exporter le Bilan et le Compte de résultat (Excel)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-[#10B981]" />
+          </button>
           <button
             onClick={() => window.print()}
             className="p-2.5 bg-[#F8F7FD] text-[#1E084A] rounded-xl border border-[#DDD6FE] hover:bg-[#EDE9FE] transition-colors shadow-2xs"

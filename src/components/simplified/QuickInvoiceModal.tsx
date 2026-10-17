@@ -1,18 +1,25 @@
 import React, { useState } from 'react';
-import { ClientDossier, JournalEntry, PaymentMethod } from '../../types';
-import { PAYMENT_METHOD_LABEL, treasuryAccountFor } from '../../utils/paymentAccounts';
+import { ClientDossier, Invoice, PaymentMethod } from '../../types';
+import { PAYMENT_METHOD_LABEL } from '../../utils/paymentAccounts';
+import { computeInvoiceTotals } from '../../utils/invoices';
+import { api } from '../../utils/api';
+import { printInvoice } from '../expert/InvoicesPanel';
 import { Receipt, X, Printer, Check, QrCode } from 'lucide-react';
 
 interface QuickInvoiceModalProps {
   activeDossier: ClientDossier;
   onClose: () => void;
-  onSavedEntry: (entry: JournalEntry) => void;
+  onCreated: (invoice: Invoice) => void;
 }
 
+/**
+ * Reçu / facture au comptant express : crée une facture soumise à validation.
+ * Les écritures (411 / 70x / 4431 + encaissement) sont générées quand un DAF ou Chef comptable la valide.
+ */
 export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
   activeDossier,
   onClose,
-  onSavedEntry
+  onCreated
 }) => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -21,50 +28,32 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
   const [unitPrice, setUnitPrice] = useState(5000);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [appliedTva, setAppliedTva] = useState(false);
-  const [isCreated, setIsCreated] = useState(false);
+  const [created, setCreated] = useState<Invoice | null>(null);
+  const [error, setError] = useState('');
+  const isCreated = created !== null;
 
-  const totalHT = quantity * unitPrice;
-  const tvaAmount = appliedTva ? Math.round(totalHT * 0.18) : 0;
-  const totalTTC = totalHT + tvaAmount;
+  const { totalTVA: tvaAmount, totalTTC } = computeInvoiceTotals([{ quantity, unitPrice }], appliedTva ? 18 : 0);
+  const invoiceNumber = created?.number ?? '';
 
-  const invoiceNumber = `FAC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  const handleGenerateAndSave = (e: React.FormEvent) => {
+  const handleGenerateAndSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !itemName || totalTTC <= 0) return;
-
-    const newEntry: JournalEntry = {
-      id: `entry-${Date.now()}`,
-      clientDossierId: activeDossier.id,
-      date: new Date().toISOString().split('T')[0],
-      label: `Vente ${quantity}x ${itemName} à ${customerName}`,
-      pieceRef: invoiceNumber,
-      debitAccount: `${treasuryAccountFor(paymentMethod).code} - ${PAYMENT_METHOD_LABEL[paymentMethod]}`,
-      debitAccountCode: treasuryAccountFor(paymentMethod).code,
-      creditAccount: '7011 - Ventes de marchandises au comptant',
-      creditAccountCode: '7011',
-      amount: totalTTC,
-      tvaAmount: tvaAmount,
-      status: 'validated',
-      confidenceScore: 99,
-      rawInput: `Facturation client ${customerName} : ${quantity}x ${itemName} pour ${totalTTC} FCFA (${PAYMENT_METHOD_LABEL[paymentMethod]})`,
-      inputType: 'manual',
-      explanationSimplified: `Facture ${invoiceNumber} de ${totalTTC.toLocaleString('fr-FR')} FCFA générée et comptabilisée.`,
-      paymentMethod,
-      auditTrail: [
-        {
-          id: `aud-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          action: 'auto_validated',
-          author: 'Facturier Express AxeCompta',
-          confidenceScore: 99,
-          notes: 'Facture émise et transmise automatiquement au journal des ventes.'
-        }
-      ]
-    };
-
-    onSavedEntry(newEntry);
-    setIsCreated(true);
+    setError('');
+    try {
+      const inv = await api.createInvoice(activeDossier.id, {
+        date: new Date().toISOString().slice(0, 10),
+        mode: 'cash',
+        paymentMethod,
+        customerName,
+        customerPhone: customerPhone || undefined,
+        vatRate: appliedTva ? 18 : 0,
+        lines: [{ description: itemName, quantity, unitPrice }],
+      }, true);
+      onCreated(inv);
+      setCreated(inv);
+    } catch (err: any) {
+      setError(err?.message || "Erreur lors de l'enregistrement de la facture.");
+    }
   };
 
   return (
@@ -75,7 +64,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Receipt className="w-5 h-5 text-[#A78BFA]" />
             <h3 className="font-heading text-base font-bold text-white">
-              {isCreated ? 'Facture Émise & Comptabilisée' : 'Émettre un Reçu / Facture Simplifiée'}
+              {isCreated ? 'Facture enregistrée' : 'Émettre un Reçu / Facture Simplifiée'}
             </h3>
           </div>
           <button onClick={onClose} className="p-1 text-[#C4B5FD] hover:text-white rounded-lg hover:bg-white/10 transition-colors">
@@ -207,6 +196,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
               </div>
             </div>
 
+            {error && <p className="text-xs text-[#B91C1C] font-bold">{error}</p>}
             <div className="flex justify-end gap-2.5 pt-2">
               <button
                 type="button"
@@ -219,7 +209,7 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
                 type="submit"
                 className="px-5 py-2.5 bg-gradient-to-r from-[#7024E3] to-[#8B5CF6] text-white text-xs font-bold rounded-xl shadow-xs hover:from-[#5B18C4] hover:to-[#7024E3] transition-all"
               >
-                Créer & Comptabiliser Directement
+                Créer la facture
               </button>
             </div>
           </form>
@@ -274,12 +264,12 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
 
             <div className="p-3.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl text-xs text-[#166534] flex items-center gap-2">
               <Check className="w-4 h-4 text-[#16A34A] shrink-0" />
-              <span>Cette vente est automatiquement enregistrée au débit de votre trésorerie et au crédit du compte 7011 SYSCOHADA.</span>
+              <span>Facture enregistrée et soumise à validation. Les écritures (client 411, vente 7011{tvaAmount > 0 ? ', TVA 4431' : ''} et encaissement) seront passées dès sa validation par le DAF ou le Chef comptable.</span>
             </div>
 
             <div className="flex justify-end gap-2.5 pt-2">
               <button
-                onClick={() => window.print()}
+                onClick={() => created && printInvoice(created, activeDossier)}
                 className="px-4 py-2 text-xs font-bold text-[#1E084A] bg-[#F5F3FF] border border-[#DDD6FE] rounded-xl flex items-center gap-1.5 hover:bg-[#EDE9FE] transition-colors"
               >
                 <Printer className="w-3.5 h-3.5" />

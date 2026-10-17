@@ -5,6 +5,7 @@ import { REGIME_FISCAL_TO_DB, AI_MODEL_TO_DB } from '../mappers';
 import { handler } from '../http';
 import { validateDossierInput, validateEntryInput, validateSettingsInput, identifier } from '../validation';
 import { buildBootstrapPayload } from './bootstrap';
+import { canValidate } from '../access';
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.post('/import-backup', handler(async (req, res) => {
   for (const raw of entries) {
     const dossierId = identifier((raw as any)?.clientDossierId);
     if (!dossierId || !restoredDossierIds.has(dossierId)) continue;
-    const parsed = validateEntryInput(raw);
+    const parsed = validateEntryInput(raw, { trusted: canValidate(user.role) });
     if (!parsed.ok) continue;
     const e = parsed.data;
     const id = identifier((raw as any)?.id) ?? undefined;
