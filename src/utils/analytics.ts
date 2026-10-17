@@ -439,7 +439,8 @@ export function computeFinancialReport(entries: JournalEntry[]): FinancialReport
   const totalActif = immobilisationsNettes + stocks + creances + treasury;
 
   const capital = -sumBalances(c => /^1[0-3]/.test(c));
-  const dettes = -sumBalances((c, b) => c.startsWith('4') && b < 0);
+  // L'impôt estimé (non encore comptabilisé) est une dette fiscale : sans lui, le bilan ne s'équilibre pas.
+  const dettes = -sumBalances((c, b) => c.startsWith('4') && b < 0) + (corporateTaxEstimated ? corporateTax : 0);
   const resultatBilan = netProfit;
   const totalPassif = capital + dettes + resultatBilan;
 
