@@ -15,3 +15,5 @@ Thumbs.db
 .neon
 DAF.txt
 .vercel
+COMPTES_PROD.txt
+backup-mdp-prod-*.json
