@@ -84,6 +84,22 @@ router.post('/users/:id/role', async (req, res, next) => {
   }
 });
 
+/** Réinitialisation du mot de passe d'un compte par un administrateur. */
+router.post('/users/:id/password', async (req, res, next) => {
+  try {
+    const id = validId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Identifiant utilisateur invalide.' });
+    const { password } = req.body ?? {};
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères.' });
+    }
+    const updated = await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password) } });
+    res.json(serializeUser(updated));
+  } catch (e) {
+    next(e);
+  }
+});
+
 /** Suppression d'un compte : POST /users/:id/delete (cascade sur ses dossiers et écritures). */
 router.post('/users/:id/delete', async (req, res, next) => {
   try {

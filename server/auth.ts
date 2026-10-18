@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
+import { prisma } from './db';
 
 /**
  * Résolu à l'usage (pas au chargement du module) : sur une fonction serverless,
@@ -53,14 +54,23 @@ export function verifyToken(token: string): AuthTokenPayload | null {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies?.[COOKIE_NAME];
-  const payload = token ? verifyToken(token) : null;
-  if (!payload) {
-    return res.status(401).json({ error: 'Authentification requise.' });
+/**
+ * Le rôle est relu en base à chaque requête : un changement de rôle s'applique tout de suite
+ * et un compte supprimé perd immédiatement l'accès (le jeton seul resterait valide 7 jours).
+ */
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = req.cookies?.[COOKIE_NAME];
+    const payload = token ? verifyToken(token) : null;
+    const user = payload ? await prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, email: true, role: true } }) : null;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentification requise.' });
+    }
+    (req as any).user = { sub: user.id, email: user.email, role: user.role };
+    next();
+  } catch (e) {
+    next(e);
   }
-  (req as any).user = payload;
-  next();
 }
 /** Utilisateur authentifié attaché à la requête par requireAuth (undefined si non connecté). */
 export function getAuthUser(req: Request): AuthTokenPayload | undefined {

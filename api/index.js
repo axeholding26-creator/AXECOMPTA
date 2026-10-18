@@ -388,6 +388,7 @@ init_mappers();
 init_db();
 
 // server/auth.ts
+init_db();
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 function getJwtSecret() {
@@ -421,14 +422,19 @@ function verifyToken(token) {
     return null;
   }
 }
-function requireAuth(req, res, next) {
-  const token = req.cookies?.[COOKIE_NAME];
-  const payload = token ? verifyToken(token) : null;
-  if (!payload) {
-    return res.status(401).json({ error: "Authentification requise." });
+async function requireAuth(req, res, next) {
+  try {
+    const token = req.cookies?.[COOKIE_NAME];
+    const payload = token ? verifyToken(token) : null;
+    const user = payload ? await prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, email: true, role: true } }) : null;
+    if (!user) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
+    req.user = { sub: user.id, email: user.email, role: user.role };
+    next();
+  } catch (e) {
+    next(e);
   }
-  req.user = payload;
-  next();
 }
 function getAuthUser(req) {
   return req.user;
@@ -3466,6 +3472,20 @@ router11.post("/users/:id/role", async (req, res, next) => {
       return res.status(400).json({ error: "Vous ne pouvez pas retirer votre propre r\xF4le administrateur." });
     }
     const updated = await prisma.user.update({ where: { id }, data: { role } });
+    res.json(serializeUser2(updated));
+  } catch (e) {
+    next(e);
+  }
+});
+router11.post("/users/:id/password", async (req, res, next) => {
+  try {
+    const id = validId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Identifiant utilisateur invalide." });
+    const { password } = req.body ?? {};
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caract\xE8res." });
+    }
+    const updated = await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password) } });
     res.json(serializeUser2(updated));
   } catch (e) {
     next(e);

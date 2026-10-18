@@ -38,5 +38,7 @@ export const adminApi = {
     request<ManagedUser>('/users', { method: 'POST', body: JSON.stringify(data) }),
   updateRole: (id: string, role: ManagedUser['role']) =>
     request<ManagedUser>(`/users/${id}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
+  resetPassword: (id: string, password: string) =>
+    request<ManagedUser>(`/users/${id}/password`, { method: 'POST', body: JSON.stringify({ password }) }),
   deleteUser: (id: string) => request<void>(`/users/${id}/delete`, { method: 'POST' }),
 };

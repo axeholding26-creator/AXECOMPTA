@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Trash2, ArrowLeft, LogOut, UserPlus, X } from 'lucide-react';
+import { ShieldCheck, Trash2, ArrowLeft, LogOut, UserPlus, X, KeyRound } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { CurrentUser, authApi } from '../utils/authApi';
 import { adminApi, ManagedUser, NewUserInput } from '../utils/adminApi';
@@ -58,6 +58,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) =
     try {
       const updated = await adminApi.updateRole(userId, role);
       setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const handleResetPassword = async (userId: string, email: string) => {
+    const password = prompt(`Nouveau mot de passe pour "${email}" (8 caractères minimum) :`);
+    if (!password) return;
+    try {
+      await adminApi.resetPassword(userId, password);
+      setError(null);
+      alert(`Mot de passe de ${email} modifié. Communiquez-le à l'utilisateur.`);
     } catch (e: any) {
       setError(e.message);
     }
@@ -253,7 +265,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) =
                       <td className="p-4 text-[#7C709A] text-xs">
                         {new Date(u.createdAt).toLocaleDateString('fr-FR')}
                       </td>
-                      <td className="p-4 text-right">
+                      <td className="p-4 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => handleResetPassword(u.id, u.email)}
+                          className="p-2 rounded-lg text-[#7C709A] hover:bg-[#F5F3FF] hover:text-[#7024E3] transition-all"
+                          title="Réinitialiser le mot de passe"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handleDelete(u.id, u.email)}
                           disabled={isSelf}
