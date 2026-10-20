@@ -84,6 +84,10 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   if (role === 'LECTURE_SEULE' && !isReadMethod && !isAgentQuestion) {
     return res.status(403).json({ error: 'Votre profil est en lecture seule : modification impossible.' });
   }
+  // L'administrateur (concepteurs) gère uniquement les comptes : aucun accès aux données comptables.
+  if (role === 'ADMIN' && !req.path.startsWith('/admin/')) {
+    return res.status(403).json({ error: "Le compte administrateur gère les utilisateurs depuis /admin uniquement." });
+  }
   next();
 });
 

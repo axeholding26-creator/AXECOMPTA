@@ -44,7 +44,7 @@ const roleLabel: Record<CurrentUser['role'], string> = {
   ADMIN: 'Administrateur',
   CHEF_COMPTABLE: 'Chef comptable',
   DAF: 'DAF',
-  COMPTABLE: 'Comptable (saisie)',
+  COMPTABLE: 'Entrepreneur',
   LECTURE_SEULE: 'Lecture seule',
 };
 
@@ -160,8 +160,8 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <Store className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">Mode Entrepreneur</span>
-              <span className="sm:hidden">Entrepreneur</span>
+              <span className="hidden sm:inline">Mode Simple</span>
+              <span className="sm:hidden">Simple</span>
             </button>
 
             <button
@@ -173,8 +173,8 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <Building2 className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">Mode Cabinet</span>
-              <span className="sm:hidden">Cabinet</span>
+              <span className="hidden sm:inline">Mode Avancé</span>
+              <span className="sm:hidden">Avancé</span>
               {(pendingValidationCount > 0 || anomalyCount > 0) && (
                 <span className="ml-0.5 px-1.5 py-0.5 text-[11px] font-mono font-bold bg-[#F59E0B] text-white rounded-full shadow-xs">
                   {pendingValidationCount + anomalyCount}

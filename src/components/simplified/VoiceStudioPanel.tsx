@@ -39,7 +39,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
   }, [speech.fullTranscript, isEditingManually]);
 
   const handleStart = async () => {
-    soundManager.play('crystal_bell', true);
+    soundManager.play('crystal_bell');
     setIsEditingManually(false);
     await speech.startListening();
   };
@@ -49,7 +49,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
     const textToSend = isEditingManually ? editableText : (finalTranscript || editableText);
     
     if (textToSend.trim()) {
-      soundManager.play('fintech_chime', true);
+      soundManager.play('fintech_chime');
       const minutes = Math.floor(speech.elapsedSeconds / 60);
       const seconds = speech.elapsedSeconds % 60;
       const durationStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
@@ -61,7 +61,7 @@ export const VoiceStudioPanel: React.FC<VoiceStudioPanelProps> = ({
     setEditableText(presetText);
     speech.setTranscript(presetText);
     setIsEditingManually(true);
-    soundManager.play('crystal_bell', true);
+    soundManager.play('crystal_bell');
   };
 
   const ORAL_SYSCOHADA_PRESETS = [

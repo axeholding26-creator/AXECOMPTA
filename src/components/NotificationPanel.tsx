@@ -6,8 +6,6 @@ import {
   Bell, 
   CheckCheck, 
   Trash2, 
-  Volume2, 
-  VolumeX, 
   Play, 
   Sliders, 
   Sparkles, 
@@ -48,9 +46,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   const [showSoundSettings, setShowSoundSettings] = useState(false);
   
   // Sound manager states
-  const [soundEnabled, setSoundEnabled] = useState(soundManager.isEnabled());
   const [currentSound, setCurrentSound] = useState<SoundType>(soundManager.getSoundType());
-  const [volume, setVolume] = useState<number>(soundManager.getVolume());
   const [isPlayingTest, setIsPlayingTest] = useState(false);
 
   if (!isOpen) return null;
@@ -64,31 +60,16 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     return true;
   });
 
-  const handleToggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    soundManager.setEnabled(next);
-    if (next) {
-      soundManager.play(currentSound, true);
-    }
-  };
-
   const handlePlaySoundTest = (specific?: SoundType) => {
     setIsPlayingTest(true);
-    soundManager.play(specific || currentSound, true);
+    soundManager.play(specific || currentSound);
     setTimeout(() => setIsPlayingTest(false), 500);
   };
 
   const handleChangeSoundType = (type: SoundType) => {
     setCurrentSound(type);
     soundManager.setSoundType(type);
-    soundManager.play(type, true);
-  };
-
-  const handleChangeVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setVolume(val);
-    soundManager.setVolume(val);
+    soundManager.play(type);
   };
 
   const getCategoryIcon = (category: NotificationCategory, type: string) => {
@@ -155,19 +136,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Quick sound toggle */}
-            <button
-              onClick={handleToggleSound}
-              className={`p-2 rounded-xl border transition-all ${
-                soundEnabled
-                  ? 'bg-[#F5F3FF] dark:bg-[#2A164F] border-[#DDD6FE] dark:border-[#4C2885] text-[#7024E3] dark:text-[#C4B5FD]'
-                  : 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-400'
-              }`}
-              title={soundEnabled ? 'Son activé (cliquez pour couper)' : 'Son coupé (cliquez pour activer)'}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-
             {/* Sound Settings Toggle */}
             <button
               onClick={() => setShowSoundSettings(!showSoundSettings)}
@@ -202,7 +170,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
               </span>
               <button
                 onClick={() => handlePlaySoundTest()}
-                disabled={!soundEnabled}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                   isPlayingTest
                     ? 'bg-[#10B981] text-white scale-95'
@@ -249,22 +216,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
               ))}
             </div>
 
-            {/* Volume Slider */}
-            <div className="flex items-center gap-3 pt-1">
-              <span className="text-[12px] font-bold text-[#534674] dark:text-[#A594C9] whitespace-nowrap">
-                Volume ({Math.round(volume * 100)}%) :
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={volume}
-                onChange={handleChangeVolume}
-                disabled={!soundEnabled}
-                className="w-full h-1.5 bg-[#DDD6FE] dark:bg-[#35225E] rounded-lg appearance-none cursor-pointer accent-[#7024E3]"
-              />
-            </div>
           </div>
         )}
 
@@ -443,21 +394,19 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
         <div className="p-3 sm:p-4 bg-[#FAF8FF] dark:bg-[#1A0E34] border-t border-[#EDE9FE] dark:border-[#2D1A54] flex flex-wrap items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-[#7C709A] dark:text-[#A594C9] flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${soundEnabled ? 'bg-[#10B981]' : 'bg-gray-400'}`} />
+              <span className="w-2 h-2 rounded-full bg-[#10B981]" />
               <span>
-                Son : <strong>{soundEnabled ? SOUND_OPTIONS.find(o => o.id === currentSound)?.label : 'Désactivé'}</strong>
+                Son : <strong>{SOUND_OPTIONS.find(o => o.id === currentSound)?.label}</strong> • volume max
               </span>
             </span>
 
-            {soundEnabled && (
-              <button
-                onClick={() => handlePlaySoundTest()}
-                className="p-1 rounded hover:bg-[#EDE9FE] dark:hover:bg-[#2D1A54] text-[#7024E3] dark:text-[#C4B5FD]"
-                title="Écouter le son par défaut"
-              >
-                <Play className="w-3 h-3 fill-current" />
-              </button>
-            )}
+            <button
+              onClick={() => handlePlaySoundTest()}
+              className="p-1 rounded hover:bg-[#EDE9FE] dark:hover:bg-[#2D1A54] text-[#7024E3] dark:text-[#C4B5FD]"
+              title="Écouter le son par défaut"
+            >
+              <Play className="w-3 h-3 fill-current" />
+            </button>
           </div>
 
           <div className="flex items-center gap-2">

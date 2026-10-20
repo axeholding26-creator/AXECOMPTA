@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ClientDossier, Invoice, PaymentMethod } from '../../types';
+import { ClientDossier, Invoice, JournalEntry, PaymentMethod } from '../../types';
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentAccounts';
 import { computeInvoiceTotals } from '../../utils/invoices';
 import { api } from '../../utils/api';
@@ -9,15 +9,18 @@ import { Receipt, X, Printer, Check, QrCode } from 'lucide-react';
 interface QuickInvoiceModalProps {
   activeDossier: ClientDossier;
   onClose: () => void;
-  onCreated: (invoice: Invoice) => void;
+  /** Propriétaire du dossier : la facture est émise tout de suite (écritures générées). */
+  issueDirectly: boolean;
+  onCreated: (invoice: Invoice, entries: JournalEntry[]) => void;
 }
 
 /**
- * Reçu / facture au comptant express : crée une facture soumise à validation.
- * Les écritures (411 / 70x / 4431 + encaissement) sont générées quand un DAF ou Chef comptable la valide.
+ * Reçu / facture au comptant express. Pour le propriétaire du dossier, la facture est émise
+ * aussitôt (411 / 70x / 4431 + encaissement) ; sinon elle est soumise à validation.
  */
 export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
   activeDossier,
+  issueDirectly,
   onClose,
   onCreated
 }) => {
@@ -49,8 +52,9 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
         vatRate: appliedTva ? 18 : 0,
         lines: [{ description: itemName, quantity, unitPrice }],
       }, true);
-      onCreated(inv);
-      setCreated(inv);
+      const { invoice, entries } = issueDirectly ? await api.validateInvoice(inv.id) : { invoice: inv, entries: [] };
+      onCreated(invoice, entries);
+      setCreated(invoice);
     } catch (err: any) {
       setError(err?.message || "Erreur lors de l'enregistrement de la facture.");
     }
@@ -264,7 +268,9 @@ export const QuickInvoiceModal: React.FC<QuickInvoiceModalProps> = ({
 
             <div className="p-3.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl text-xs text-[#166534] flex items-center gap-2">
               <Check className="w-4 h-4 text-[#16A34A] shrink-0" />
-              <span>Facture enregistrée et soumise à validation. Les écritures (client 411, vente 7011{tvaAmount > 0 ? ', TVA 4431' : ''} et encaissement) seront passées dès sa validation par le DAF ou le Chef comptable.</span>
+              <span>{created?.status === 'validated'
+                ? <>Facture émise. Les écritures (client 411, vente 7011{tvaAmount > 0 ? ', TVA 4431' : ''} et encaissement) sont passées dans votre comptabilité.</>
+                : <>Facture enregistrée et soumise à validation. Les écritures (client 411, vente 7011{tvaAmount > 0 ? ', TVA 4431' : ''} et encaissement) seront passées dès sa validation.</>}</span>
             </div>
 
             <div className="flex justify-end gap-2.5 pt-2">

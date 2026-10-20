@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { JournalEntry, ClientDossier } from '../../types';
 import { SYSCOHADA_ACCOUNTS, accountsForDossier } from '../../data/syscohadaPlan';
 import { CurrentUser } from '../../utils/authApi';
-import { canValidate, canUnvalidate, canWrite, isOwnWork } from '../../utils/roles';
+import { canValidate, canUnvalidate, canWrite, isOwnWork, ownsDossier } from '../../utils/roles';
 import { downloadXlsx, fileSafe } from '../../utils/excelExport';
 import { 
   CheckCircle2, 
@@ -67,11 +67,14 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
 
   const dossierEntries = entries.filter(e => e.clientDossierId === activeDossier.id);
   const accounts = accountsForDossier(activeDossier.id);
-  const validator = canValidate(currentUser.role);
-  const chief = canUnvalidate(currentUser.role);
+  const owner = ownsDossier(activeDossier, currentUser);
+  const validator = owner || canValidate(currentUser.role);
+  const chief = owner || canUnvalidate(currentUser.role);
   const writer = canWrite(currentUser.role);
+  // La séparation des tâches ne s'applique pas au propriétaire du dossier
+  const blockedOwnWork = (e: JournalEntry) => !owner && isOwnWork(e, currentUser.id);
   const canValidateEntry = (e: JournalEntry) =>
-    validator && (e.status === 'pending_review' || e.status === 'anomaly') && !isOwnWork(e, currentUser.id);
+    validator && (e.status === 'pending_review' || e.status === 'anomaly') && !blockedOwnWork(e);
   const askReason = (what: string) => window.prompt(`Motif de ${what} (facultatif) :`, '');
 
   // Assistant IA du cabinet : résumé du dossier et suggestion de validation en lot
@@ -79,7 +82,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const reliableIds = dossierEntries
-    .filter(e => e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= activeDossier.confidenceThreshold && !isOwnWork(e, currentUser.id))
+    .filter(e => e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= activeDossier.confidenceThreshold && !blockedOwnWork(e))
     .map(e => e.id);
 
   const loadAiSummary = async () => {
@@ -558,7 +561,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                             <Check className="w-4 h-4 font-bold" />
                           </button>
                         )}
-                        {validator && (entry.status === 'pending_review' || entry.status === 'anomaly') && isOwnWork(entry, currentUser.id) && (
+                        {validator && (entry.status === 'pending_review' || entry.status === 'anomaly') && blockedOwnWork(entry) && (
                           <span className="p-1.5 text-[#C4B5FD] cursor-help" title="Séparation des tâches : vous avez saisi ou modifié cette écriture, un autre valideur doit la valider.">
                             <Check className="w-4 h-4" />
                           </span>
@@ -567,7 +570,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                           <button
                             onClick={() => { const r = askReason('la dévalidation'); if (r !== null) onEntryAction('unvalidate', entry.id, r); }}
                             className="p-1.5 text-[#D97706] hover:bg-[#FEF3C7] rounded-lg transition-colors"
-                            title="Dévalider (Chef comptable)"
+                            title="Dévalider"
                           >
                             <Undo2 className="w-3.5 h-3.5" />
                           </button>
@@ -576,7 +579,7 @@ export const JournalValidation: React.FC<JournalValidationProps> = ({
                           <button
                             onClick={() => { const r = askReason("l'annulation"); if (r !== null) onEntryAction('cancel', entry.id, r); }}
                             className="p-1.5 text-[#DC2626] hover:bg-[#FEE2E2] rounded-lg transition-colors"
-                            title="Annuler l'écriture (Chef comptable)"
+                            title="Annuler l'écriture"
                           >
                             <Ban className="w-3.5 h-3.5" />
                           </button>

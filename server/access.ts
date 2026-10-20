@@ -7,8 +7,8 @@ import { getAuthUser } from './auth';
  *
  * - Un utilisateur classique ne voit et ne modifie que les dossiers qu'il a créés,
  *   ainsi que les écritures et notifications rattachées à ces dossiers.
- * - Un administrateur voit l'ensemble des dossiers (regroupés par propriétaire) afin
- *   de superviser la plateforme.
+ * - L'administrateur (concepteurs de la plateforme) est à part : il gère les comptes
+ *   utilisateurs via /api/admin et n'a accès à aucune donnée comptable.
  *
  * Toute autorisation est évaluée côté serveur à partir de la session, jamais d'un
  * identifiant transmis par le client.
@@ -23,16 +23,27 @@ export function isAdminRequest(req: Request): boolean {
  * - COMPTABLE : saisie (brouillon / en attente), voit ses propres dossiers ;
  * - DAF : validation définitive, voit tous les dossiers ;
  * - CHEF_COMPTABLE : validation + dévalidation / annulation, voit tous les dossiers ;
- * - ADMIN : tous les droits (la séparation des tâches s'applique quand même).
  */
 export function seesAllDossiers(role?: string): boolean {
-  return role === 'ADMIN' || role === 'DAF' || role === 'CHEF_COMPTABLE';
+  return role === 'DAF' || role === 'CHEF_COMPTABLE';
 }
 export function canValidate(role?: string): boolean {
-  return role === 'ADMIN' || role === 'DAF' || role === 'CHEF_COMPTABLE';
+  return role === 'DAF' || role === 'CHEF_COMPTABLE';
 }
 export function canUnvalidate(role?: string): boolean {
-  return role === 'ADMIN' || role === 'CHEF_COMPTABLE';
+  return role === 'CHEF_COMPTABLE';
+}
+
+/**
+ * Entrepreneur seul : le propriétaire d'un dossier a tous les droits dessus
+ * (validation, dévalidation, annulation). La séparation des tâches ne s'applique
+ * qu'aux autres intervenants du dossier.
+ */
+export async function ownsDossier(req: Request, dossierId: string): Promise<boolean> {
+  const user = getAuthUser(req);
+  if (!user) return false;
+  const dossier = await prisma.clientDossier.findUnique({ where: { id: dossierId }, select: { ownerId: true } });
+  return dossier?.ownerId === user.sub;
 }
 
 /** Nom affiché dans la piste d'audit (jamais fourni par le client). */

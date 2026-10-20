@@ -806,7 +806,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       onChange={() => setImportAsValidated(true)}
                       className="accent-[#7024E3]"
                     />
-                    <span>Soumettre directement à validation (DAF / Chef comptable)</span>
+                    <span>Enregistrer directement (validées si aucune anomalie)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer font-bold text-[#534674]">
                     <input

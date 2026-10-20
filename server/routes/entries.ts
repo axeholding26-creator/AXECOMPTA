@@ -1,7 +1,7 @@
 import { Router, Request } from 'express';
 import { prisma } from '../db';
 import { serializeEntry } from '../mappers';
-import { findAccessibleDossier, findAccessibleEntry, canValidate, canUnvalidate, actorName } from '../access';
+import { findAccessibleDossier, findAccessibleEntry, canValidate, canUnvalidate, actorName, ownsDossier } from '../access';
 import { getAuthUser } from '../auth';
 import { handler } from '../http';
 import { validateEntryInput, identifier, optionalReason, EntryInput, unwrap } from '../validation';
@@ -36,7 +36,28 @@ function userId(req: Request): string {
   return getAuthUser(req)!.sub;
 }
 
-function entryCreateData(e: EntryInput, dossierId: string, createdById: string) {
+type DossierRules = { id: string; ownerId: string; confidenceThreshold: number };
+
+/**
+ * Entrepreneur seul : une écriture du propriétaire, sans anomalie et au-dessus du seuil
+ * de confiance du dossier, est validée dès l'enregistrement. Le reste attend sa vérification.
+ */
+export function autoValidates(e: Pick<EntryInput, 'status' | 'detectedAnomaly' | 'confidenceScore'>, dossier: DossierRules, uid: string): boolean {
+  return dossier.ownerId === uid && e.status === 'pending_review' && !e.detectedAnomaly && e.confidenceScore >= dossier.confidenceThreshold;
+}
+
+function autoValidationData(author: string, uid: string) {
+  return {
+    status: 'validated' as const,
+    validatedById: uid,
+    validatedAt: new Date(),
+    auditTrail: { create: { action: 'auto_validated' as const, author, notes: 'Validée automatiquement (sans anomalie, confiance au-dessus du seuil du dossier).' } },
+  };
+}
+
+function entryCreateData(e: EntryInput, dossier: DossierRules, createdById: string, author: string) {
+  const dossierId = dossier.id;
+  const auto = autoValidates(e, dossier, createdById);
   return {
     id: e.id,
     date: new Date(e.date),
@@ -55,8 +76,9 @@ function entryCreateData(e: EntryInput, dossierId: string, createdById: string) 
     explanationSimplified: e.explanationSimplified,
     paymentMethod: e.paymentMethod as any,
     createdById,
+    ...(auto ? { status: 'validated' as const, validatedById: createdById, validatedAt: new Date() } : {}),
     auditTrail: {
-      create: e.auditTrail.map(a => ({
+      create: [...e.auditTrail.map(a => ({
         id: a.id,
         timestamp: new Date(a.timestamp),
         action: a.action as any,
@@ -64,7 +86,7 @@ function entryCreateData(e: EntryInput, dossierId: string, createdById: string) 
         notes: a.notes,
         previousValue: a.previousValue,
         confidenceScore: a.confidenceScore,
-      })),
+      })), ...(auto ? [autoValidationData(author, createdById).auditTrail.create] : [])],
     },
   };
 }
@@ -81,7 +103,7 @@ router.post('/entries', handler(async (req, res) => {
   const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
   if (accountError) return res.status(400).json({ error: accountError });
 
-  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
+  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossier, userId(req), await actorName(req)), include: ENTRY_INCLUDE });
   res.status(201).json(serializeEntry(created));
 }));
 
@@ -91,6 +113,7 @@ router.post('/entries/import', handler(async (req, res) => {
   if (list.length === 0) return res.status(400).json({ error: 'Aucune écriture à importer.' });
   if (list.length > 5000) return res.status(400).json({ error: 'Import limité à 5000 écritures par opération.' });
 
+  const author = await actorName(req);
   const created = [];
   for (const raw of list) {
     const dossierId = identifier((raw as any)?.clientDossierId);
@@ -103,7 +126,7 @@ router.post('/entries/import', handler(async (req, res) => {
     const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
     if (accountError) return res.status(400).json({ error: accountError });
 
-    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
+    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossier, userId(req), author), include: ENTRY_INCLUDE });
     created.push(serializeEntry(row));
   }
   res.status(201).json(created);
@@ -119,7 +142,7 @@ router.post('/entries/:id/update', handler(async (req, res) => {
   const existing = await findAccessibleEntry(req, id);
   if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
   if (!EDITABLE.includes(existing.status)) {
-    return res.status(409).json({ error: 'Écriture validée ou annulée : modification impossible (dévalidation par le Chef comptable requise).' });
+    return res.status(409).json({ error: 'Écriture validée ou annulée : modification impossible (dévalidez-la d’abord).' });
   }
   if (existing.invoiceId) {
     return res.status(409).json({ error: 'Écriture générée par une facture : modifiez la facture.' });
@@ -129,6 +152,9 @@ router.post('/entries/:id/update', handler(async (req, res) => {
 
   const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], existing.clientDossierId);
   if (accountError) return res.status(400).json({ error: accountError });
+
+  const dossier = await prisma.clientDossier.findUniqueOrThrow({ where: { id: existing.clientDossierId } });
+  const auto = autoValidates(e, dossier, userId(req));
 
   await prisma.journalEntry.update({
     where: { id: id },
@@ -167,6 +193,9 @@ router.post('/entries/:id/update', handler(async (req, res) => {
       },
     });
   }
+  if (auto) {
+    await prisma.journalEntry.update({ where: { id }, data: { ...autoValidationData(await actorName(req), userId(req)), detectedAnomaly: null } });
+  }
 
   const fresh = await prisma.journalEntry.findUniqueOrThrow({ where: { id: id }, include: ENTRY_INCLUDE });
   res.json(serializeEntry(fresh));
@@ -191,15 +220,12 @@ router.post('/entries/:id/submit', handler(async (req, res) => {
 }));
 
 /**
- * Validation (unitaire ou en lot) : DAF, Chef comptable ou administrateur uniquement,
- * et jamais sur une écriture que l'on a soi-même saisie ou modifiée.
+ * Validation (unitaire ou en lot) : propriétaire du dossier, ou DAF / Chef comptable / administrateur
+ * — ces derniers jamais sur une écriture qu'ils ont eux-mêmes saisie ou modifiée.
  * Réponse : écritures validées + écritures refusées avec leur motif.
  */
 router.post('/entries/batch-validate', handler(async (req, res) => {
   const user = getAuthUser(req)!;
-  if (!canValidate(user.role)) {
-    return res.status(403).json({ error: 'Validation réservée au DAF et au Chef comptable.' });
-  }
   const rawIds = Array.isArray((req.body ?? {}).ids) ? (req.body.ids as unknown[]) : [];
   const ids = rawIds.map(identifier).filter((v): v is string => Boolean(v));
   if (ids.length === 0) return res.status(400).json({ error: 'Aucune écriture à valider.' });
@@ -214,7 +240,12 @@ router.post('/entries/batch-validate', handler(async (req, res) => {
       refused.push({ id, reason: entry.status === 'draft' ? 'Brouillon non soumis.' : 'Déjà validée ou annulée.' });
       continue;
     }
-    if (isOwnWork(entry, user.sub)) {
+    const owner = await ownsDossier(req, entry.clientDossierId);
+    if (!owner && !canValidate(user.role)) {
+      refused.push({ id, reason: 'Validation réservée au propriétaire du dossier.' });
+      continue;
+    }
+    if (!owner && isOwnWork(entry, user.sub)) {
       refused.push({ id, reason: 'Séparation des tâches : vous avez saisi ou modifié cette écriture.' });
       continue;
     }
@@ -235,14 +266,14 @@ router.post('/entries/batch-validate', handler(async (req, res) => {
   res.json({ validated: rows.map(serializeEntry), refused });
 }));
 
-/** Dévalidation : Chef comptable (ou administrateur) uniquement. L'écriture repasse "en attente". */
+/** Dévalidation : propriétaire du dossier, Chef comptable ou administrateur. L'écriture repasse "en attente". */
 router.post('/entries/:id/unvalidate', handler(async (req, res) => {
-  if (!canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: 'Dévalidation réservée au Chef comptable.' });
-  }
   const id = identifier(req.params.id);
   const existing = id ? await findAccessibleEntry(req, id) : null;
   if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (!canUnvalidate(getAuthUser(req)?.role) && !(await ownsDossier(req, existing.clientDossierId))) {
+    return res.status(403).json({ error: 'Dévalidation réservée au propriétaire du dossier.' });
+  }
   if (existing.status !== 'validated') return res.status(409).json({ error: 'Seule une écriture validée peut être dévalidée.' });
   if (existing.invoiceId) return res.status(409).json({ error: 'Écriture générée par une facture : annulez la facture.' });
 
@@ -259,14 +290,14 @@ router.post('/entries/:id/unvalidate', handler(async (req, res) => {
   res.json(serializeEntry(row));
 }));
 
-/** Annulation : Chef comptable (ou administrateur) uniquement. Le lettrage éventuel est supprimé. */
+/** Annulation : propriétaire du dossier, Chef comptable ou administrateur. Le lettrage éventuel est supprimé. */
 router.post('/entries/:id/cancel', handler(async (req, res) => {
-  if (!canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: 'Annulation réservée au Chef comptable.' });
-  }
   const id = identifier(req.params.id);
   const existing = id ? await findAccessibleEntry(req, id) : null;
   if (!existing) return res.status(404).json({ error: 'Écriture introuvable.' });
+  if (!canUnvalidate(getAuthUser(req)?.role) && !(await ownsDossier(req, existing.clientDossierId))) {
+    return res.status(403).json({ error: 'Annulation réservée au propriétaire du dossier.' });
+  }
   if (existing.status === 'cancelled') return res.status(409).json({ error: 'Écriture déjà annulée.' });
   if (existing.invoiceId) return res.status(409).json({ error: 'Écriture générée par une facture : annulez la facture.' });
 

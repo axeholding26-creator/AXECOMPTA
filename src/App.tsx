@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ClientDossier, JournalEntry, AppNotification, NotificationType, NotificationCategory, PlatformSettings, Invoice } from './types';
 import { registerCustomAccounts } from './data/syscohadaPlan';
-import { seesAllDossiers } from './utils/roles';
+import { seesAllDossiers, ownsDossier } from './utils/roles';
+import { showDeviceNotification } from './utils/deviceNotify';
 import { DEFAULT_PLATFORM_SETTINGS } from './data/initialSettings';
 import { soundManager } from './utils/sound';
 import { api } from './utils/api';
@@ -47,7 +48,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS);
   const [currentMode, setCurrentMode] = useState<'simplified' | 'expert'>('simplified');
-  // Page dédiée (Trésorerie & Statistiques), indépendante du mode Entrepreneur/Cabinet
+  // Page dédiée (Trésorerie & Statistiques), indépendante du mode Simple/Avancé
   const [activePage, setActivePage] = useState<'home' | 'treasury'>('home');
   const [dossiers, setDossiers] = useState<ClientDossier[]>([]);
   const [activeDossierId, setActiveDossierId] = useState<string>('');
@@ -104,9 +105,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
 
   // Sync settings with SoundManager
   useEffect(() => {
-    soundManager.setEnabled(platformSettings.soundEnabled);
     soundManager.setSoundType(platformSettings.soundType);
-    soundManager.setVolume(platformSettings.soundVolume);
   }, [platformSettings]);
 
   // Le dossier actif est une simple préférence d'affichage locale, pas une donnée comptable.
@@ -166,7 +165,6 @@ export default function App({ currentUser, onLogout }: AppProps) {
     options?: {
       actionLabel?: string;
       actionPayload?: { mode?: 'simplified' | 'expert'; expertTab?: 'portfolio' | 'journal' | 'invoices' | 'accounts' | 'ledger' | 'financials' | 'tax' };
-      playSound?: boolean;
     }
   ) => {
     const newNotif: AppNotification = {
@@ -185,16 +183,15 @@ export default function App({ currentUser, onLogout }: AppProps) {
     setNotifications(prev => [newNotif, ...prev]);
     api.createNotification(newNotif).catch(e => console.error('Erreur de persistance notification', e));
 
-    // Play synthesized notification sound by default
-    if (options?.playSound !== false) {
-      soundManager.play(type === 'warning' || type === 'error' ? 'alert_warning' : undefined);
-    }
+    // Toujours : carillon au volume maximum + bannière sur l'appareil
+    soundManager.play(type === 'warning' || type === 'error' ? 'alert_warning' : undefined);
+    showDeviceNotification(title, message, newNotif.id);
 
     showToast(title);
   };
 
   // Add new entry
-  const handleNewEntry = async (newEntry: JournalEntry): Promise<boolean> => {
+  const handleNewEntry = async (newEntry: JournalEntry): Promise<JournalEntry | null> => {
     try {
       const saved = await api.createEntry(newEntry);
       setEntries(prev => [saved, ...prev]);
@@ -212,11 +209,11 @@ export default function App({ currentUser, onLogout }: AppProps) {
           actionPayload: { mode: 'expert', expertTab: 'journal' }
         }
       );
-      return true;
+      return saved;
     } catch (e) {
       console.error('Erreur lors de la création de l\'écriture', e);
       showToast("Erreur lors de l'enregistrement de l'écriture.");
-      return false;
+      return null;
     }
   };
 
@@ -300,7 +297,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
       setEntries(prev => prev.map(e => e.id === saved.id ? saved : e));
       pushNotification(
         'Écriture mise à jour',
-        `L'écriture "${saved.label}" a été modifiée (en attente de validation).`,
+        `L'écriture "${saved.label}" a été modifiée${saved.status === 'validated' ? ' et validée' : ' (en attente de validation)'}.`,
         'success',
         'compta'
       );
@@ -434,7 +431,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
       setEntries(data.entries);
       setNotifications(data.notifications);
 
-      soundManager.play('fintech_chime', true);
+      soundManager.play('fintech_chime');
       pushNotification(
         'Restauration effectuée',
         'Les données et paramètres de la plateforme ont été restaurés depuis votre sauvegarde.',
@@ -456,7 +453,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
 
   const handleMarkAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    soundManager.play('soft_chord', true);
+    soundManager.play('soft_chord');
     api.markAllNotificationsRead().catch(e => console.error('Erreur de mise à jour notifications', e));
   };
 
@@ -746,10 +743,13 @@ export default function App({ currentUser, onLogout }: AppProps) {
       {isQuickInvoiceOpen && (
         <QuickInvoiceModal
           activeDossier={activeDossier}
+          issueDirectly={ownsDossier(activeDossier, currentUser)}
           onClose={() => setIsQuickInvoiceOpen(false)}
-          onCreated={(inv) => {
+          onCreated={(inv, invEntries) => {
             upsertInvoice(inv);
-            pushNotification('Facture enregistrée', `Facture ${inv.number} (${inv.totalTTC.toLocaleString('fr-FR')} FCFA) en attente de validation.`, 'info', 'compta',
+            mergeEntries(invEntries);
+            const issued = inv.status === 'validated';
+            pushNotification(issued ? 'Facture émise' : 'Facture enregistrée', `Facture ${inv.number} (${inv.totalTTC.toLocaleString('fr-FR')} FCFA) ${issued ? 'émise et comptabilisée' : 'en attente de validation'}.`, issued ? 'success' : 'info', 'compta',
               { actionLabel: 'Voir les factures', actionPayload: { mode: 'expert', expertTab: 'invoices' } });
           }}
         />

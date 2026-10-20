@@ -3,7 +3,7 @@ import { Building2, LogOut, ArrowRight, Sparkles } from 'lucide-react';
 import { BrandLogo } from '../BrandLogo';
 import { CurrentUser } from '../../utils/authApi';
 import { ClientDossier } from '../../types';
-import { OHADA_COUNTRIES, ACTIVITY_SECTORS, FISCAL_REGIMES } from '../../data/initialSettings';
+import { OHADA_COUNTRIES, ACTIVITY_SECTORS, FISCAL_REGIMES, detectUserCountry, dossierCurrency } from '../../data/initialSettings';
 
 interface FirstDossierSetupProps {
   currentUser: CurrentUser;
@@ -13,18 +13,21 @@ interface FirstDossierSetupProps {
 
 type DossierForm = Omit<ClientDossier, 'id' | 'ownerId' | 'ownerName'>;
 
-const EMPTY_FORM: DossierForm = {
+const countryDefaults = (c: typeof OHADA_COUNTRIES[number]) => ({
+  country: c.name,
+  city: c.city,
+  phone: `${c.phonePrefix} `,
+  currency: dossierCurrency(c),
+});
+
+const EMPTY_FORM: Omit<DossierForm, 'country' | 'city' | 'phone' | 'currency'> = {
   name: '',
   managerName: '',
-  phone: '+225 ',
-  activity: ACTIVITY_SECTORS[0],
-  city: 'Abidjan',
-  country: "Côte d'Ivoire",
+  activity: '',
   rccm: '',
   ifu: '',
   regimeFiscal: 'Réel Simplifié',
   confidenceThreshold: 85,
-  currency: 'FCFA',
 };
 
 /**
@@ -33,7 +36,7 @@ const EMPTY_FORM: DossierForm = {
  * qui lui sera rattaché (aucune donnée de démonstration n'est injectée).
  */
 export const FirstDossierSetup: React.FC<FirstDossierSetupProps> = ({ currentUser, onLogout, onCreateDossier }) => {
-  const [form, setForm] = useState<DossierForm>(() => ({ ...EMPTY_FORM, managerName: currentUser.name }));
+  const [form, setForm] = useState<DossierForm>(() => ({ ...EMPTY_FORM, ...countryDefaults(detectUserCountry()), managerName: currentUser.name }));
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -41,7 +44,18 @@ export const FirstDossierSetup: React.FC<FirstDossierSetupProps> = ({ currentUse
 
   const handleCountryChange = (countryName: string) => {
     const found = OHADA_COUNTRIES.find(c => c.name === countryName);
-    set({ country: countryName, currency: found?.currency.includes('FCFA') ? 'FCFA' : found?.currency || 'FCFA' });
+    if (!found) return;
+    const prev = OHADA_COUNTRIES.find(c => c.name === form.country);
+    const next = countryDefaults(found);
+    // On ne remplace la ville et l'indicatif que s'ils n'ont pas été personnalisés.
+    set({
+      country: next.country,
+      currency: next.currency,
+      ...(!form.city.trim() || form.city === prev?.city ? { city: next.city } : {}),
+      ...(prev && form.phone.startsWith(prev.phonePrefix)
+        ? { phone: found.phonePrefix + form.phone.slice(prev.phonePrefix.length) }
+        : !form.phone.trim() ? { phone: next.phone } : {}),
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +64,7 @@ export const FirstDossierSetup: React.FC<FirstDossierSetupProps> = ({ currentUse
     if (!form.name.trim()) return setError("Indiquez le nom de l'entreprise ou de l'activité.");
     if (!form.managerName.trim()) return setError('Indiquez le nom du gérant.');
     if (!form.phone.trim()) return setError('Indiquez un numéro de téléphone.');
+    if (!form.activity.trim()) return setError("Choisissez ou saisissez votre secteur d'activité.");
     if (!form.rccm.trim()) return setError('Indiquez le numéro RCCM.');
     if (!form.ifu.trim()) return setError("Indiquez le numéro d'IFU.");
     setSubmitting(true);
@@ -118,13 +133,20 @@ export const FirstDossierSetup: React.FC<FirstDossierSetupProps> = ({ currentUse
               </div>
               <div>
                 <label className={label}>Téléphone *</label>
-                <input className={field} value={form.phone} onChange={e => set({ phone: e.target.value })} placeholder="+225 07 00 00 00 00" />
+                <input className={field} value={form.phone} onChange={e => set({ phone: e.target.value })} placeholder={`${form.phone.split(' ')[0] || '+225'} 07 00 00 00 00`} />
               </div>
               <div>
                 <label className={label}>Secteur d'activité *</label>
-                <select className={field} value={form.activity} onChange={e => set({ activity: e.target.value })}>
-                  {ACTIVITY_SECTORS.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
+                <input
+                  className={field}
+                  list="activity-sectors"
+                  value={form.activity}
+                  onChange={e => set({ activity: e.target.value })}
+                  placeholder="Choisissez dans la liste ou saisissez"
+                />
+                <datalist id="activity-sectors">
+                  {ACTIVITY_SECTORS.map(a => <option key={a} value={a} />)}
+                </datalist>
               </div>
               <div>
                 <label className={label}>Régime fiscal *</label>

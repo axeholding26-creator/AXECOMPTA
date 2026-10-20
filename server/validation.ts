@@ -241,7 +241,7 @@ export function validateSettingsInput(body: unknown): Result<Record<string, unkn
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
   };
   if (!version) return { ok: false, error: 'Version SYSCOHADA requise.' };
-  if (!cabinetName) return { ok: false, error: 'Nom du cabinet requis.' };
+  if (!cabinetName) return { ok: false, error: 'Nom de l’espace requis.' };
   return {
     ok: true,
     data: {

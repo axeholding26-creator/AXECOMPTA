@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { ClientDossier, PlatformSettings, JournalEntry } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { soundManager, SOUND_OPTIONS, SoundType } from '../utils/sound';
+import { deviceNotificationStatus, requestDeviceNotifications } from '../utils/deviceNotify';
 import { OHADA_COUNTRIES, ACTIVITY_SECTORS, FISCAL_REGIMES } from '../data/initialSettings';
 import { 
   Settings, 
@@ -15,7 +16,6 @@ import {
   Sliders, 
   Sparkles, 
   Volume2, 
-  VolumeX, 
   Play, 
   Palette, 
   Database, 
@@ -83,7 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     name: '',
     managerName: '',
     phone: '',
-    activity: ACTIVITY_SECTORS[0],
+    activity: '',
     city: 'Abidjan',
     country: "Côte d'Ivoire",
     rccm: '',
@@ -98,6 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Sound test feedback state
   const [isPlayingTest, setIsPlayingTest] = useState(false);
+  const [deviceNotif, setDeviceNotif] = useState(deviceNotificationStatus());
 
   // Success message feedback
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -118,7 +119,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       name: '',
       managerName: '',
       phone: '+225 ',
-      activity: ACTIVITY_SECTORS[0],
+      activity: '',
       city: 'Abidjan',
       country: "Côte d'Ivoire",
       rccm: 'CI-ABJ-2026-B-',
@@ -215,7 +216,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Sound testing
   const handleTestSound = (type?: SoundType) => {
     setIsPlayingTest(true);
-    soundManager.play(type || settings.soundType, true);
+    soundManager.play(type || settings.soundType);
     setTimeout(() => setIsPlayingTest(false), 500);
   };
 
@@ -395,7 +396,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }`}
             >
               <Palette className="w-4 h-4" />
-              <span>Affichage & Cabinet</span>
+              <span>Affichage</span>
             </button>
 
             <button
@@ -748,13 +749,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Auto-validation retirée : séparation des tâches */}
+                  {/* Validation : règle du propriétaire du dossier (server/access.ts) */}
                   <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] space-y-0.5">
                     <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
                       Validation des écritures
                     </span>
                     <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
-                      L'IA et les imports ne valident jamais : toute écriture est validée par un DAF ou un Chef comptable différent de celui qui l'a saisie.
+                      Vos écritures sans anomalie et au-dessus du seuil de confiance du dossier sont validées automatiquement. Les autres restent « à vérifier » dans le journal, où vous les validez en un clic.
                     </p>
                   </div>
 
@@ -810,64 +811,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Paramètres Audio & Alertes Sonores
                   </h3>
                   <p className="text-xs text-[#7C709A] dark:text-[#A594C9] mt-0.5">
-                    Choisissez le son de notification par défaut, testez les carillons et ajustez le volume.
+                    Choisissez le son de notification par défaut et testez les carillons.
                   </p>
                 </div>
 
-                {/* Sound Master Switch & Volume */}
-                <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-2 rounded-xl ${settings.soundEnabled ? 'bg-[#7024E3] text-white' : 'bg-gray-200 text-gray-400'}`}>
-                        {settings.soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
-                          Alertes Sonores : {settings.soundEnabled ? 'Activées' : 'Désactivées'}
-                        </span>
-                        <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
-                          Synthétisées avec la Web Audio API (aucun délai, qualité studio).
-                        </p>
-                      </div>
+                {/* Son toujours actif au volume maximum, notifications sur l'appareil */}
+                <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-[#7024E3] text-white">
+                      <Volume2 className="w-5 h-5" />
                     </div>
-
-                    <button
-                      onClick={() => {
-                        const next = !settings.soundEnabled;
-                        onUpdateSettings({ ...settings, soundEnabled: next });
-                        soundManager.setEnabled(next);
-                        if (next) soundManager.play(settings.soundType, true);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                        settings.soundEnabled
-                          ? 'bg-[#EDE9FE] dark:bg-[#2A164F] text-[#7024E3] dark:text-[#C4B5FD] border-[#DDD6FE]'
-                          : 'bg-gray-100 text-gray-500 border-gray-300'
-                      }`}
-                    >
-                      {settings.soundEnabled ? 'Désactiver le son' : 'Activer le son'}
-                    </button>
+                    <div>
+                      <span className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF] block">
+                        Alertes sonores : toujours activées, volume maximum
+                      </span>
+                      <p className="text-[12px] text-[#7C709A] dark:text-[#8E7BB8]">
+                        Le volume réel dépend aussi du volume de votre appareil et du mode silencieux.
+                      </p>
+                    </div>
                   </div>
-
-                  {/* Volume Slider */}
-                  <div className="flex items-center gap-3 pt-2">
-                    <span className="text-xs font-bold text-[#534674] dark:text-[#A594C9] whitespace-nowrap">
-                      Volume ({Math.round(settings.soundVolume * 100)}%) :
+                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#EDE9FE] dark:border-[#2D1A54]">
+                    <span className="text-xs text-[#534674] dark:text-[#A594C9]">
+                      Notifications sur l'appareil : <strong>{deviceNotif === 'granted' ? 'activées' : deviceNotif === 'denied' ? 'bloquées dans le navigateur' : deviceNotif === 'unsupported' ? 'non prises en charge' : 'à autoriser'}</strong>
                     </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={settings.soundVolume}
-                      onChange={e => {
-                        const val = parseFloat(e.target.value);
-                        onUpdateSettings({ ...settings, soundVolume: val });
-                        soundManager.setVolume(val);
-                      }}
-                      disabled={!settings.soundEnabled}
-                      className="w-full h-1.5 bg-[#DDD6FE] dark:bg-[#35225E] rounded-lg appearance-none cursor-pointer accent-[#7024E3]"
-                    />
+                    {deviceNotif === 'default' && (
+                      <button
+                        onClick={async () => setDeviceNotif(await requestDeviceNotifications())}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#7024E3] text-white hover:bg-[#5B18C4]"
+                      >
+                        Autoriser
+                      </button>
+                    )}
                   </div>
+                  {deviceNotif === 'denied' && (
+                    <p className="text-[12px] text-[#D97706]">
+                      Débloquez-les dans les réglages du site (icône à gauche de l'adresse), puis rechargez la page.
+                    </p>
+                  )}
                 </div>
 
                 {/* Sound Presets Selection */}
@@ -895,7 +875,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           onClick={() => {
                             onUpdateSettings({ ...settings, soundType: opt.id });
                             soundManager.setSoundType(opt.id);
-                            soundManager.play(opt.id, true);
+                            soundManager.play(opt.id);
                           }}
                           className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all flex items-start justify-between gap-2 ${
                             isSelected
@@ -974,10 +954,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-6">
                 <div>
                   <h3 className="text-base font-black font-heading text-[#1E084A] dark:text-[#F3EFFF]">
-                    Affichage, Thème & Identité du Cabinet
+                    Affichage, Thème & Identité
                   </h3>
                   <p className="text-xs text-[#7C709A] dark:text-[#A594C9] mt-0.5">
-                    Personnalisez le libellé de votre cabinet et les préférences visuelles de travail.
+                    Personnalisez le nom de votre espace et les préférences visuelles de travail.
                   </p>
                 </div>
 
@@ -985,7 +965,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Cabinet Name */}
                   <div className="p-4 rounded-xl border border-[#EDE9FE] dark:border-[#2D1A54] bg-[#FAF8FF] dark:bg-[#190D34] space-y-2">
                     <label className="text-xs font-bold text-[#1E084A] dark:text-[#F3EFFF]">
-                      Raison Sociale du Cabinet Comptable
+                      Nom de votre espace
                     </label>
                     <input
                       type="text"
@@ -1024,8 +1004,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={e => onUpdateSettings({ ...settings, defaultStartupView: e.target.value as any })}
                       className="w-full p-2.5 bg-white dark:bg-[#150A2A] border border-[#DDD6FE] dark:border-[#35225E] rounded-xl text-xs"
                     >
-                      <option value="simplified">Mode Entrepreneur (Simplifié - Reçus & Trésorerie)</option>
-                      <option value="expert">Mode Cabinet (Expert - Journal & Grand Livre)</option>
+                      <option value="simplified">Mode Simple (Reçus & Trésorerie)</option>
+                      <option value="expert">Mode Avancé (Journal & Grand Livre)</option>
                     </select>
                     <p className="text-[12px] text-[#7C709A]">
                       Définit l'écran principal chargé à l'ouverture de l'application.
@@ -1263,15 +1243,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <label className="font-bold block mb-1">
                     Secteur d'Activité
                   </label>
-                  <select
+                  <input
+                    list="settings-activity-sectors"
                     value={formData.activity}
                     onChange={e => setFormData({ ...formData, activity: e.target.value })}
+                    placeholder="Choisissez dans la liste ou saisissez"
                     className="w-full p-2.5 bg-[#FAF8FF] dark:bg-[#150A2A] border border-[#DDD6FE] dark:border-[#35225E] rounded-xl"
-                  >
-                    {ACTIVITY_SECTORS.map(sec => (
-                      <option key={sec} value={sec}>{sec}</option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id="settings-activity-sectors">
+                    {ACTIVITY_SECTORS.map(sec => <option key={sec} value={sec} />)}
+                  </datalist>
                 </div>
 
                 {/* RCCM */}

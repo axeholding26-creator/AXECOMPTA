@@ -193,7 +193,7 @@ export const MultiClientPortfolio: React.FC<MultiClientPortfolioProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <span className="text-[11px] font-mono uppercase tracking-widest text-[#A78BFA] font-bold block">
-              {groupByOwner ? 'Espace Supervision Administrateur • Tous les dossiers' : 'Espace Cabinet Comptable • Vos dossiers'}
+              {groupByOwner ? 'Espace Supervision Administrateur • Tous les dossiers' : 'Mes entreprises • Vos dossiers'}
             </span>
             <h2 className="font-heading text-2xl font-black text-white mt-1">
               Portefeuille Multi-Clients OHADA

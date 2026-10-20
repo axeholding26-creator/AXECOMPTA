@@ -4,6 +4,9 @@ import AuthGate from './AuthGate.tsx';
 import AdminGate from './AdminGate.tsx';
 import { ThemeProvider } from './context/ThemeContext.tsx';
 import './index.css';
+import { initDeviceNotifications } from './utils/deviceNotify';
+
+initDeviceNotifications();
 
 // Pas de routeur pour une seule page dédiée : /admin affiche la gestion des
 // utilisateurs, tout le reste affiche l'application normale.

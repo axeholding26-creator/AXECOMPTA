@@ -317,7 +317,7 @@ export function buildEntries(ops: ParsedOperation[], { ctx, rawInput, inputType,
       }
       confidence = Math.max(0, Math.min(99, Math.round(confidence)));
 
-      // Séparation des tâches : l'IA ne valide jamais, un DAF / Chef comptable le fait.
+      // L'IA propose : la validation se décide à l'enregistrement (autoValidates, server/routes/entries.ts).
       const status: JournalEntry['status'] = anomaly ? 'anomaly' : 'pending_review';
       const action: AuditLog['action'] = anomaly ? 'anomaly_flagged' : 'created_by_ai';
       const ref = op.pieceRef ?? `OP-${Math.floor(1000 + Math.random() * 9000)}`;

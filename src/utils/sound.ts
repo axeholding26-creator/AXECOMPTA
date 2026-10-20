@@ -31,31 +31,26 @@ export const SOUND_OPTIONS: SoundOption[] = [
   }
 ];
 
+/**
+ * Les notifications sonnent toujours, au volume maximum que le navigateur autorise.
+ * Une page web ne peut pas monter le volume système de l'appareil (ni passer outre le mode silencieux) :
+ * on joue donc à pleine échelle, derrière un limiteur qui évite la saturation.
+ */
 class SoundManager {
   private ctx: AudioContext | null = null;
-  private soundEnabled: boolean = true;
+  private output: AudioNode | null = null;
   private currentSound: SoundType = 'fintech_chime';
-  private volume: number = 0.7; // 0 to 1
 
   constructor() {
     if (typeof window !== 'undefined') {
-      const savedEnabled = localStorage.getItem('axecompta_sound_enabled');
-      if (savedEnabled !== null) {
-        this.soundEnabled = savedEnabled === 'true';
-      }
-
       const savedSound = localStorage.getItem('axecompta_sound_type') as SoundType;
       if (savedSound && SOUND_OPTIONS.some(o => o.id === savedSound)) {
         this.currentSound = savedSound;
       }
-
-      const savedVol = localStorage.getItem('axecompta_sound_volume');
-      if (savedVol !== null) {
-        const parsed = parseFloat(savedVol);
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-          this.volume = parsed;
-        }
-      }
+      // Le navigateur n'autorise le son qu'après un geste : on déverrouille l'audio au premier contact.
+      const unlock = () => this.initContext();
+      window.addEventListener('pointerdown', unlock, { once: true });
+      window.addEventListener('keydown', unlock, { once: true });
     }
   }
 
@@ -65,23 +60,21 @@ class SoundManager {
       const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtxClass) {
         this.ctx = new AudioCtxClass();
+        // Limiteur : volume maximal sans saturation quand les notes se superposent
+        const limiter = this.ctx.createDynamicsCompressor();
+        limiter.threshold.value = -1;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.001;
+        limiter.release.value = 0.05;
+        limiter.connect(this.ctx.destination);
+        this.output = limiter;
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
-  }
-
-  public isEnabled(): boolean {
-    return this.soundEnabled;
-  }
-
-  public setEnabled(enabled: boolean): void {
-    this.soundEnabled = enabled;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('axecompta_sound_enabled', String(enabled));
-    }
   }
 
   public getSoundType(): SoundType {
@@ -95,25 +88,10 @@ class SoundManager {
     }
   }
 
-  public getVolume(): number {
-    return this.volume;
-  }
-
-  public setVolume(vol: number): void {
-    this.volume = Math.max(0, Math.min(1, vol));
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('axecompta_sound_volume', String(this.volume));
-    }
-  }
-
   /**
    * Plays the default or specified notification sound
    */
-  public play(specificType?: SoundType, forcePlay: boolean = false): void {
-    if (!forcePlay && (!this.soundEnabled || this.volume <= 0)) {
-      return;
-    }
-
+  public play(specificType?: SoundType): void {
     const typeToPlay = specificType || this.currentSound;
     const ctx = this.initContext();
     if (!ctx) return;
@@ -145,8 +123,8 @@ class SoundManager {
   // Preset 1: Default Fintech Chime (Melodic D5 -> A5)
   private synthesizeChime(ctx: AudioContext, now: number): void {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(this.volume * 0.25, now);
-    masterGain.connect(ctx.destination);
+    masterGain.gain.setValueAtTime(1, now);
+    masterGain.connect(this.output ?? ctx.destination);
 
     // Note 1: 587.33 Hz (D5)
     const osc1 = ctx.createOscillator();
@@ -191,8 +169,8 @@ class SoundManager {
   // Preset 2: Crystal Bell (High-pitched chime)
   private synthesizeCrystal(ctx: AudioContext, now: number): void {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(this.volume * 0.22, now);
-    masterGain.connect(ctx.destination);
+    masterGain.gain.setValueAtTime(1, now);
+    masterGain.connect(this.output ?? ctx.destination);
 
     const freqs = [783.99, 1046.5, 1318.5]; // G5, C6, E6
     freqs.forEach((freq, idx) => {
@@ -213,8 +191,8 @@ class SoundManager {
   // Preset 3: Soft Chord Arpeggio
   private synthesizeChord(ctx: AudioContext, now: number): void {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(this.volume * 0.24, now);
-    masterGain.connect(ctx.destination);
+    masterGain.gain.setValueAtTime(1, now);
+    masterGain.connect(this.output ?? ctx.destination);
 
     const notes = [440, 554.37, 659.25]; // A4, C#5, E5
     notes.forEach((f, i) => {
@@ -235,8 +213,8 @@ class SoundManager {
   // Preset 4: Warning / Anomaly Alert
   private synthesizeAlert(ctx: AudioContext, now: number): void {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(this.volume * 0.26, now);
-    masterGain.connect(ctx.destination);
+    masterGain.gain.setValueAtTime(1, now);
+    masterGain.connect(this.output ?? ctx.destination);
 
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();

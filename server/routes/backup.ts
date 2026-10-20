@@ -5,7 +5,6 @@ import { REGIME_FISCAL_TO_DB, AI_MODEL_TO_DB } from '../mappers';
 import { handler } from '../http';
 import { validateDossierInput, validateEntryInput, validateSettingsInput, identifier } from '../validation';
 import { buildBootstrapPayload } from './bootstrap';
-import { canValidate } from '../access';
 
 const router = Router();
 
@@ -31,15 +30,9 @@ router.post('/import-backup', handler(async (req, res) => {
   }
 
   // 1. Vider uniquement le périmètre du requérant (jamais celui des autres utilisateurs).
-  if (user.role === 'ADMIN') {
-    await prisma.appNotification.deleteMany();
-    await prisma.journalEntry.deleteMany();
-    await prisma.clientDossier.deleteMany();
-  } else {
-    await prisma.appNotification.deleteMany({ where: { dossier: { ownerId: user.sub } } });
-    await prisma.journalEntry.deleteMany({ where: { clientDossier: { ownerId: user.sub } } });
-    await prisma.clientDossier.deleteMany({ where: { ownerId: user.sub } });
-  }
+  await prisma.appNotification.deleteMany({ where: { dossier: { ownerId: user.sub } } });
+  await prisma.journalEntry.deleteMany({ where: { clientDossier: { ownerId: user.sub } } });
+  await prisma.clientDossier.deleteMany({ where: { ownerId: user.sub } });
 
   // 2. Recréer les dossiers, rattachés au requérant.
   const restoredDossierIds = new Set<string>();
@@ -72,7 +65,8 @@ router.post('/import-backup', handler(async (req, res) => {
   for (const raw of entries) {
     const dossierId = identifier((raw as any)?.clientDossierId);
     if (!dossierId || !restoredDossierIds.has(dossierId)) continue;
-    const parsed = validateEntryInput(raw, { trusted: canValidate(user.role) });
+    // Dossier restauré = dossier du requérant : il en conserve les statuts validés.
+    const parsed = validateEntryInput(raw, { trusted: true });
     if (!parsed.ok) continue;
     const e = parsed.data;
     const id = identifier((raw as any)?.id) ?? undefined;

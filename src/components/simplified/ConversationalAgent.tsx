@@ -29,7 +29,8 @@ interface ConversationalAgentProps {
   /** Nom du compte connecté, utilisé pour la salutation de l'agent. */
   userName?: string;
   /** Enregistre l'écriture ; retourne false si l'enregistrement a échoué. */
-  onNewEntry: (entry: JournalEntry) => void | boolean | Promise<void | boolean>;
+  /** Renvoie l'écriture enregistrée (statut définitif), ou null en cas d'échec. */
+  onNewEntry: (entry: JournalEntry) => Promise<JournalEntry | null>;
   recentEntries: JournalEntry[];
   onOpenExcelImport?: () => void;
 }
@@ -134,7 +135,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
   // Voice recording toggle via Web Speech API & Microphone
   const handleToggleVoiceInput = async () => {
     if (!speech.isListening) {
-      soundManager.play('crystal_bell', true);
+      soundManager.play('crystal_bell');
       await speech.startListening();
     } else {
       const transcribedText = speech.stopListening();
@@ -143,7 +144,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
       const durationStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
       
       if (transcribedText.trim()) {
-        soundManager.play('fintech_chime', true);
+        soundManager.play('fintech_chime');
         handleProcessInput(transcribedText.trim(), 'voice', durationStr);
       }
     }
@@ -156,7 +157,7 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
     const durationStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     
     if (transcribedText.trim()) {
-      soundManager.play('fintech_chime', true);
+      soundManager.play('fintech_chime');
       handleProcessInput(transcribedText.trim(), 'voice', durationStr);
     }
   };
@@ -214,15 +215,16 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
 
       if (entries.length > 0) {
         let failed = 0;
+        const savedEntries: JournalEntry[] = [];
         for (const entry of entries) {
-          const saved = await Promise.resolve(onNewEntry(entry));
-          if (saved === false) failed++;
+          const saved = await onNewEntry(entry);
+          if (saved) savedEntries.push(saved); else failed++;
         }
         addAgentMessage({
           text: failed
             ? `${result.reply}\n\n⚠️ ${failed} écriture(s) n'ont pas pu être enregistrées. Réessayez dans un instant.`
             : result.reply,
-          entries,
+          entries: savedEntries,
           quickActions: result.quickActions
         });
       } else {
@@ -419,12 +421,12 @@ export const ConversationalAgent: React.FC<ConversationalAgentProps> = ({
                       <div className="flex items-center gap-1.5">
                         {entry.status === 'validated' && (
                           <span className="flex items-center gap-1 px-2 py-0.5 bg-[#10B981] text-white font-bold text-[11px] rounded">
-                            <CheckCircle2 className="w-3 h-3" /> Validé auto
+                            <CheckCircle2 className="w-3 h-3" /> Validée
                           </span>
                         )}
                         {entry.status === 'pending_review' && (
                           <span className="flex items-center gap-1 px-2 py-0.5 bg-[#F59E0B] text-[#1E084A] font-bold text-[11px] rounded">
-                            <Clock className="w-3 h-3" /> À valider par cabinet
+                            <Clock className="w-3 h-3" /> À vérifier
                           </span>
                         )}
                         {entry.status === 'anomaly' && (

@@ -1,19 +1,34 @@
 import { PlatformSettings } from '../types';
 
 export const OHADA_COUNTRIES = [
-  { code: 'CI', name: "Côte d'Ivoire", currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇨🇮' },
-  { code: 'SN', name: 'Sénégal', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇸🇳' },
-  { code: 'CM', name: 'Cameroun', currency: 'FCFA (XAF)', defaultVat: 19.25, flag: '🇨🇲' },
-  { code: 'BJ', name: 'Bénin', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇧🇯' },
-  { code: 'TG', name: 'Togo', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇹🇬' },
-  { code: 'BF', name: 'Burkina Faso', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇧🇫' },
-  { code: 'ML', name: 'Mali', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇲🇱' },
-  { code: 'GA', name: 'Gabon', currency: 'FCFA (XAF)', defaultVat: 18, flag: '🇬🇦' },
-  { code: 'CG', name: 'Congo', currency: 'FCFA (XAF)', defaultVat: 18, flag: '🇨🇬' },
-  { code: 'NE', name: 'Niger', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇳🇪' },
-  { code: 'GN', name: 'Guinée', currency: 'GNF', defaultVat: 18, flag: '🇬🇳' },
-  { code: 'CD', name: 'RD Congo', currency: 'CDF / USD', defaultVat: 16, flag: '🇨🇩' }
+  { code: 'CI', name: "Côte d'Ivoire", currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇨🇮', phonePrefix: '+225', city: 'Abidjan', timezones: ['Africa/Abidjan'] },
+  { code: 'SN', name: 'Sénégal', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇸🇳', phonePrefix: '+221', city: 'Dakar', timezones: ['Africa/Dakar'] },
+  { code: 'CM', name: 'Cameroun', currency: 'FCFA (XAF)', defaultVat: 19.25, flag: '🇨🇲', phonePrefix: '+237', city: 'Douala', timezones: ['Africa/Douala'] },
+  { code: 'BJ', name: 'Bénin', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇧🇯', phonePrefix: '+229', city: 'Cotonou', timezones: ['Africa/Porto-Novo'] },
+  { code: 'TG', name: 'Togo', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇹🇬', phonePrefix: '+228', city: 'Lomé', timezones: ['Africa/Lome'] },
+  { code: 'BF', name: 'Burkina Faso', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇧🇫', phonePrefix: '+226', city: 'Ouagadougou', timezones: ['Africa/Ouagadougou'] },
+  { code: 'ML', name: 'Mali', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇲🇱', phonePrefix: '+223', city: 'Bamako', timezones: ['Africa/Bamako'] },
+  { code: 'GA', name: 'Gabon', currency: 'FCFA (XAF)', defaultVat: 18, flag: '🇬🇦', phonePrefix: '+241', city: 'Libreville', timezones: ['Africa/Libreville'] },
+  { code: 'CG', name: 'Congo', currency: 'FCFA (XAF)', defaultVat: 18, flag: '🇨🇬', phonePrefix: '+242', city: 'Brazzaville', timezones: ['Africa/Brazzaville'] },
+  { code: 'NE', name: 'Niger', currency: 'FCFA (XOF)', defaultVat: 18, flag: '🇳🇪', phonePrefix: '+227', city: 'Niamey', timezones: ['Africa/Niamey'] },
+  { code: 'GN', name: 'Guinée', currency: 'GNF', defaultVat: 18, flag: '🇬🇳', phonePrefix: '+224', city: 'Conakry', timezones: ['Africa/Conakry'] },
+  { code: 'CD', name: 'RD Congo', currency: 'CDF / USD', defaultVat: 16, flag: '🇨🇩', phonePrefix: '+243', city: 'Kinshasa', timezones: ['Africa/Kinshasa', 'Africa/Lubumbashi'] }
 ];
+
+export type OhadaCountry = typeof OHADA_COUNTRIES[number];
+
+/** Pays de l'utilisateur deviné sans réseau ni permission : fuseau horaire, puis région de la langue (fr-SN…). */
+export function detectUserCountry(): OhadaCountry {
+  let tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+  const byTz = OHADA_COUNTRIES.find(c => c.timezones.includes(tz));
+  if (byTz) return byTz;
+  const regions = (navigator.languages ?? [navigator.language]).map(l => l.split('-')[1]?.toUpperCase());
+  return OHADA_COUNTRIES.find(c => regions.includes(c.code)) ?? OHADA_COUNTRIES[0];
+}
+
+/** Valeur de devise stockée sur le dossier pour un pays. */
+export const dossierCurrency = (c?: OhadaCountry) => c?.currency.includes('FCFA') ? 'FCFA' : c?.currency || 'FCFA';
 
 export const ACTIVITY_SECTORS = [
   'Commerce de gros & demi-gros',

@@ -1,7 +1,7 @@
 import { Router, Request } from 'express';
 import { prisma } from '../db';
 import { serializeEntry, serializeInvoice } from '../mappers';
-import { findAccessibleDossier, canValidate, canUnvalidate, actorName } from '../access';
+import { findAccessibleDossier, canValidate, canUnvalidate, actorName, ownsDossier } from '../access';
 import { getAuthUser } from '../auth';
 import { handler } from '../http';
 import { validateInvoiceInput, identifier, isoDate, positiveMoney, optionalText, PAYMENT_METHODS, InvoiceInputData, unwrap } from '../validation';
@@ -130,14 +130,18 @@ router.post('/invoices/:id/submit', handler(async (req, res) => {
 /**
  * Validation définitive : génère les écritures 411 / 70x / 4431 (+ règlement au comptant),
  * toutes validées et rattachées à la facture. Réponse : { invoice, entries }.
+ * Le propriétaire du dossier émet directement depuis le brouillon ; les autres profils
+ * valident une facture en attente qu'ils n'ont pas saisie.
  */
 router.post('/invoices/:id/validate', handler(async (req, res) => {
   const user = getAuthUser(req)!;
-  if (!canValidate(user.role)) return res.status(403).json({ error: 'Validation réservée au DAF et au Chef comptable.' });
   const inv = await findAccessibleInvoice(req, identifier(req.params.id));
   if (!inv) return res.status(404).json({ error: 'Facture introuvable.' });
-  if (inv.status !== 'pending_review') return res.status(409).json({ error: 'Seule une facture en attente peut être validée.' });
-  if (isOwnWork(inv, user.sub)) {
+  const owner = await ownsDossier(req, inv.clientDossierId);
+  if (!owner && !canValidate(user.role)) return res.status(403).json({ error: 'Validation réservée au propriétaire du dossier.' });
+  const validatable = owner ? ['draft', 'pending_review'] : ['pending_review'];
+  if (!validatable.includes(inv.status)) return res.status(409).json({ error: 'Cette facture ne peut plus être validée.' });
+  if (!owner && isOwnWork(inv, user.sub)) {
     return res.status(403).json({ error: 'Séparation des tâches : vous avez saisi ou modifié cette facture.' });
   }
 
@@ -194,14 +198,14 @@ router.post('/invoices/:id/validate', handler(async (req, res) => {
 
 /**
  * Annulation. Brouillon / en attente : par tout profil de saisie.
- * Facture validée : Chef comptable uniquement ; ses écritures sont annulées et son lettrage supprimé.
+ * Facture validée : propriétaire du dossier, Chef comptable ou administrateur ; ses écritures sont annulées et son lettrage supprimé.
  */
 router.post('/invoices/:id/cancel', handler(async (req, res) => {
   const inv = await findAccessibleInvoice(req, identifier(req.params.id));
   if (!inv) return res.status(404).json({ error: 'Facture introuvable.' });
   if (inv.status === 'cancelled') return res.status(409).json({ error: 'Facture déjà annulée.' });
-  if (inv.status === 'validated' && !canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: "Annulation d'une facture validée réservée au Chef comptable." });
+  if (inv.status === 'validated' && !canUnvalidate(getAuthUser(req)?.role) && !(await ownsDossier(req, inv.clientDossierId))) {
+    return res.status(403).json({ error: "Annulation d'une facture validée réservée au propriétaire du dossier." });
   }
   const author = await actorName(req);
   const reason = optionalText((req.body ?? {}).reason, 300) ?? `Annulation de la facture ${inv.number}.`;
@@ -226,7 +230,7 @@ router.post('/invoices/:id/cancel', handler(async (req, res) => {
 /**
  * Lettrage d'un règlement sur une facture validée :
  *  - { entryId, amount } : règlement déjà saisi (écriture au crédit d'un compte 411 du dossier) ;
- *  - { newPayment: { date, amount, paymentMethod } } : crée l'écriture de règlement (en attente de validation).
+ *  - { newPayment: { date, amount, paymentMethod } } : crée l'écriture de règlement (validée d'office pour le propriétaire du dossier, sinon en attente).
  * Réponse : { invoice, entry }.
  */
 router.post('/invoices/:id/payments', handler(async (req, res) => {
@@ -251,11 +255,14 @@ router.post('/invoices/:id/payments', handler(async (req, res) => {
     if (accountError) return res.status(400).json({ error: accountError });
     const label = `Règlement facture ${inv.number} — ${inv.customerName}`;
     const author = await actorName(req);
+    // Le propriétaire saisit lui-même son règlement : il est validé d'office.
+    const owner = await ownsDossier(req, inv.clientDossierId);
     const entry = await prisma.journalEntry.create({
       data: {
         date: new Date(date), label, pieceRef: optionalText(np.pieceRef, 80) ?? `REG-${inv.number}`,
         debitAccountCode: treasury, creditAccountCode: inv.customerAccountCode,
-        amount, tvaAmount: 0, clientDossierId: inv.clientDossierId, status: 'pending_review',
+        amount, tvaAmount: 0, clientDossierId: inv.clientDossierId,
+        ...(owner ? { status: 'validated' as const, validatedById: user.sub, validatedAt: new Date() } : { status: 'pending_review' as const }),
         confidenceScore: 100, rawInput: label, inputType: 'manual', paymentMethod: method as any,
         explanationSimplified: `${label} : ${amount.toLocaleString('fr-FR')} encaissés.`,
         createdById: user.sub,

@@ -4,7 +4,7 @@ import { CurrentUser } from '../../utils/authApi';
 import { api } from '../../utils/api';
 import { accountsForDossier } from '../../data/syscohadaPlan';
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentAccounts';
-import { canValidate, canUnvalidate, canWrite, isOwnWork } from '../../utils/roles';
+import { canValidate, canUnvalidate, canWrite, isOwnWork, ownsDossier } from '../../utils/roles';
 import { computeInvoiceTotals, computeAgedBalance, AGING_BUCKETS, paidAmount, remainingAmount, settlementState } from '../../utils/invoices';
 import { downloadXlsx, fileSafe } from '../../utils/excelExport';
 import { FileText, Plus, X, Send, Check, Ban, Edit3, Wallet, Printer, FileSpreadsheet, Trash2, Link2 } from 'lucide-react';
@@ -51,8 +51,10 @@ export const InvoicesPanel: React.FC<InvoicesPanelProps> = ({
   const [busy, setBusy] = useState(false);
 
   const writer = canWrite(currentUser.role);
-  const validator = canValidate(currentUser.role);
-  const chief = canUnvalidate(currentUser.role);
+  // Le propriétaire du dossier émet ses factures lui-même, sans circuit de validation
+  const owner = ownsDossier(activeDossier, currentUser);
+  const validator = owner || canValidate(currentUser.role);
+  const chief = owner || canUnvalidate(currentUser.role);
   const aged = computeAgedBalance(invoices, today());
 
   const run = async (fn: () => Promise<void>) => {
@@ -151,7 +153,7 @@ export const InvoicesPanel: React.FC<InvoicesPanelProps> = ({
                   <tr><td colSpan={7} className="p-6 text-center text-[#7C709A]">Aucune facture pour ce dossier.</td></tr>
                 )}
                 {invoices.map(inv => {
-                  const own = isOwnWork(inv, currentUser.id);
+                  const own = !owner && isOwnWork(inv, currentUser.id);
                   const st = settlementState(inv);
                   const late = inv.status === 'validated' && st !== 'paid' && inv.dueDate < today();
                   return (
@@ -183,17 +185,17 @@ export const InvoicesPanel: React.FC<InvoicesPanelProps> = ({
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {writer && inv.status === 'draft' && (
+                          {writer && !owner && inv.status === 'draft' && (
                             <button disabled={busy} className={`${btn} text-[#7024E3] hover:bg-[#F5F3FF]`} title="Soumettre à validation" onClick={() => submit(inv)}>
                               <Send className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {validator && inv.status === 'pending_review' && (own ? (
+                          {validator && (inv.status === 'pending_review' || (owner && inv.status === 'draft')) && (own ? (
                             <span className={`${btn} text-[#C4B5FD] cursor-help`} title="Séparation des tâches : un autre valideur doit valider votre facture.">
                               <Check className="w-4 h-4" />
                             </span>
                           ) : (
-                            <button disabled={busy} className={`${btn} text-[#10B981] hover:bg-[#F0FDF4]`} title="Valider et générer les écritures" onClick={() => validate(inv)}>
+                            <button disabled={busy} className={`${btn} text-[#10B981] hover:bg-[#F0FDF4]`} title={owner ? "Émettre la facture (génère les écritures)" : "Valider et générer les écritures"} onClick={() => validate(inv)}>
                               <Check className="w-4 h-4" />
                             </button>
                           ))}
@@ -414,7 +416,7 @@ const InvoiceEditor: React.FC<InvoiceEditorProps> = ({ invoice, activeDossier, o
           </div>
 
           <p className="text-[11px] text-[#7C709A]">
-            À la validation (DAF / Chef comptable, autre que le saisisseur) : débit {form.customerAccountCode} {fmt(totals.totalTTC)},
+            À l'émission : débit {form.customerAccountCode} {fmt(totals.totalTTC)},
             crédit {form.salesAccountCode} {fmt(totals.totalHT)}{totals.totalTVA > 0 ? `, crédit 4431 ${fmt(totals.totalTVA)}` : ''}
             {form.mode === 'cash' ? ' + encaissement immédiat lettré.' : '.'}
           </p>
@@ -534,7 +536,7 @@ const LetteringModal: React.FC<LetteringModalProps> = ({ invoice, invoices, entr
                   className="px-4 py-2 bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-bold rounded-xl disabled:opacity-40">
                   Encaisser et lettrer {fmt(amount)}
                 </button>
-                <p className="text-[10.5px] text-[#7C709A]">Crée l'écriture « trésorerie / {invoice.customerAccountCode} » en attente de validation, lettrée sur cette facture.</p>
+                <p className="text-[10.5px] text-[#7C709A]">Crée l'écriture « trésorerie / {invoice.customerAccountCode} », lettrée sur cette facture.</p>
               </section>
 
               <section>
