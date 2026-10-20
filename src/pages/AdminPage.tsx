@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Trash2, ArrowLeft, LogOut, UserPlus, X, KeyRound } from 'lucide-react';
+import { ShieldCheck, Trash2, LogOut, UserPlus, X, KeyRound } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { CurrentUser, authApi } from '../utils/authApi';
 import { adminApi, ManagedUser, NewUserInput } from '../utils/adminApi';
@@ -99,13 +99,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ currentUser, onLogout }) =
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href="/"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#DDD6FE] bg-[#F5F3FF] text-[#7024E3] text-xs font-bold hover:bg-[#EDE9FE] transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Retour à l'application</span>
-            </a>
             <button
               onClick={onLogout}
               className="p-2.5 rounded-xl border border-[#DDD6FE] bg-[#F5F3FF] text-[#7024E3] hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
