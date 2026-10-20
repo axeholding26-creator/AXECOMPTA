@@ -442,13 +442,19 @@ function getAuthUser(req) {
 
 // server/access.ts
 function seesAllDossiers(role) {
-  return role === "ADMIN" || role === "DAF" || role === "CHEF_COMPTABLE";
+  return role === "DAF" || role === "CHEF_COMPTABLE";
 }
 function canValidate(role) {
-  return role === "ADMIN" || role === "DAF" || role === "CHEF_COMPTABLE";
+  return role === "DAF" || role === "CHEF_COMPTABLE";
 }
 function canUnvalidate(role) {
-  return role === "ADMIN" || role === "CHEF_COMPTABLE";
+  return role === "CHEF_COMPTABLE";
+}
+async function ownsDossier(req, dossierId) {
+  const user = getAuthUser(req);
+  if (!user) return false;
+  const dossier = await prisma.clientDossier.findUnique({ where: { id: dossierId }, select: { ownerId: true } });
+  return dossier?.ownerId === user.sub;
 }
 async function actorName(req) {
   const user = getAuthUser(req);
@@ -718,7 +724,7 @@ function validateSettingsInput(body) {
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
   };
   if (!version) return { ok: false, error: "Version SYSCOHADA requise." };
-  if (!cabinetName) return { ok: false, error: "Nom du cabinet requis." };
+  if (!cabinetName) return { ok: false, error: "Nom de l\u2019espace requis." };
   return {
     ok: true,
     data: {
@@ -926,7 +932,20 @@ function isOwnWork(row, userId2) {
 function userId(req) {
   return getAuthUser(req).sub;
 }
-function entryCreateData(e, dossierId, createdById) {
+function autoValidates(e, dossier, uid) {
+  return dossier.ownerId === uid && e.status === "pending_review" && !e.detectedAnomaly && e.confidenceScore >= dossier.confidenceThreshold;
+}
+function autoValidationData(author, uid) {
+  return {
+    status: "validated",
+    validatedById: uid,
+    validatedAt: /* @__PURE__ */ new Date(),
+    auditTrail: { create: { action: "auto_validated", author, notes: "Valid\xE9e automatiquement (sans anomalie, confiance au-dessus du seuil du dossier)." } }
+  };
+}
+function entryCreateData(e, dossier, createdById, author) {
+  const dossierId = dossier.id;
+  const auto = autoValidates(e, dossier, createdById);
   return {
     id: e.id,
     date: new Date(e.date),
@@ -945,8 +964,9 @@ function entryCreateData(e, dossierId, createdById) {
     explanationSimplified: e.explanationSimplified,
     paymentMethod: e.paymentMethod,
     createdById,
+    ...auto ? { status: "validated", validatedById: createdById, validatedAt: /* @__PURE__ */ new Date() } : {},
     auditTrail: {
-      create: e.auditTrail.map((a) => ({
+      create: [...e.auditTrail.map((a) => ({
         id: a.id,
         timestamp: new Date(a.timestamp),
         action: a.action,
@@ -954,7 +974,7 @@ function entryCreateData(e, dossierId, createdById) {
         notes: a.notes,
         previousValue: a.previousValue,
         confidenceScore: a.confidenceScore
-      }))
+      })), ...auto ? [autoValidationData(author, createdById).auditTrail.create] : []]
     }
   };
 }
@@ -966,13 +986,14 @@ router2.post("/entries", handler(async (req, res) => {
   const e = unwrap(validateEntryInput(req.body));
   const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
   if (accountError) return res.status(400).json({ error: accountError });
-  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
+  const created = await prisma.journalEntry.create({ data: entryCreateData(e, dossier, userId(req), await actorName(req)), include: ENTRY_INCLUDE });
   res.status(201).json(serializeEntry(created));
 }));
 router2.post("/entries/import", handler(async (req, res) => {
   const list = Array.isArray((req.body ?? {}).entries) ? req.body.entries : [];
   if (list.length === 0) return res.status(400).json({ error: "Aucune \xE9criture \xE0 importer." });
   if (list.length > 5e3) return res.status(400).json({ error: "Import limit\xE9 \xE0 5000 \xE9critures par op\xE9ration." });
+  const author = await actorName(req);
   const created = [];
   for (const raw of list) {
     const dossierId = identifier(raw?.clientDossierId);
@@ -982,7 +1003,7 @@ router2.post("/entries/import", handler(async (req, res) => {
     const e = unwrap(validateEntryInput(raw, { requireId: true }));
     const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], dossierId);
     if (accountError) return res.status(400).json({ error: accountError });
-    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossierId, userId(req)), include: ENTRY_INCLUDE });
+    const row = await prisma.journalEntry.create({ data: entryCreateData(e, dossier, userId(req), author), include: ENTRY_INCLUDE });
     created.push(serializeEntry(row));
   }
   res.status(201).json(created);
@@ -993,7 +1014,7 @@ router2.post("/entries/:id/update", handler(async (req, res) => {
   const existing = await findAccessibleEntry(req, id);
   if (!existing) return res.status(404).json({ error: "\xC9criture introuvable." });
   if (!EDITABLE.includes(existing.status)) {
-    return res.status(409).json({ error: "\xC9criture valid\xE9e ou annul\xE9e : modification impossible (d\xE9validation par le Chef comptable requise)." });
+    return res.status(409).json({ error: "\xC9criture valid\xE9e ou annul\xE9e : modification impossible (d\xE9validez-la d\u2019abord)." });
   }
   if (existing.invoiceId) {
     return res.status(409).json({ error: "\xC9criture g\xE9n\xE9r\xE9e par une facture : modifiez la facture." });
@@ -1001,6 +1022,8 @@ router2.post("/entries/:id/update", handler(async (req, res) => {
   const e = unwrap(validateEntryInput(req.body));
   const accountError = await assertAccountsUsable([e.debitAccountCode, e.creditAccountCode], existing.clientDossierId);
   if (accountError) return res.status(400).json({ error: accountError });
+  const dossier = await prisma.clientDossier.findUniqueOrThrow({ where: { id: existing.clientDossierId } });
+  const auto = autoValidates(e, dossier, userId(req));
   await prisma.journalEntry.update({
     where: { id },
     data: {
@@ -1037,6 +1060,9 @@ router2.post("/entries/:id/update", handler(async (req, res) => {
       }
     });
   }
+  if (auto) {
+    await prisma.journalEntry.update({ where: { id }, data: { ...autoValidationData(await actorName(req), userId(req)), detectedAnomaly: null } });
+  }
   const fresh = await prisma.journalEntry.findUniqueOrThrow({ where: { id }, include: ENTRY_INCLUDE });
   res.json(serializeEntry(fresh));
 }));
@@ -1057,9 +1083,6 @@ router2.post("/entries/:id/submit", handler(async (req, res) => {
 }));
 router2.post("/entries/batch-validate", handler(async (req, res) => {
   const user = getAuthUser(req);
-  if (!canValidate(user.role)) {
-    return res.status(403).json({ error: "Validation r\xE9serv\xE9e au DAF et au Chef comptable." });
-  }
   const rawIds = Array.isArray((req.body ?? {}).ids) ? req.body.ids : [];
   const ids = rawIds.map(identifier).filter((v) => Boolean(v));
   if (ids.length === 0) return res.status(400).json({ error: "Aucune \xE9criture \xE0 valider." });
@@ -1076,7 +1099,12 @@ router2.post("/entries/batch-validate", handler(async (req, res) => {
       refused.push({ id, reason: entry.status === "draft" ? "Brouillon non soumis." : "D\xE9j\xE0 valid\xE9e ou annul\xE9e." });
       continue;
     }
-    if (isOwnWork(entry, user.sub)) {
+    const owner = await ownsDossier(req, entry.clientDossierId);
+    if (!owner && !canValidate(user.role)) {
+      refused.push({ id, reason: "Validation r\xE9serv\xE9e au propri\xE9taire du dossier." });
+      continue;
+    }
+    if (!owner && isOwnWork(entry, user.sub)) {
       refused.push({ id, reason: "S\xE9paration des t\xE2ches : vous avez saisi ou modifi\xE9 cette \xE9criture." });
       continue;
     }
@@ -1096,12 +1124,12 @@ router2.post("/entries/batch-validate", handler(async (req, res) => {
   res.json({ validated: rows.map(serializeEntry), refused });
 }));
 router2.post("/entries/:id/unvalidate", handler(async (req, res) => {
-  if (!canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: "D\xE9validation r\xE9serv\xE9e au Chef comptable." });
-  }
   const id = identifier(req.params.id);
   const existing = id ? await findAccessibleEntry(req, id) : null;
   if (!existing) return res.status(404).json({ error: "\xC9criture introuvable." });
+  if (!canUnvalidate(getAuthUser(req)?.role) && !await ownsDossier(req, existing.clientDossierId)) {
+    return res.status(403).json({ error: "D\xE9validation r\xE9serv\xE9e au propri\xE9taire du dossier." });
+  }
   if (existing.status !== "validated") return res.status(409).json({ error: "Seule une \xE9criture valid\xE9e peut \xEAtre d\xE9valid\xE9e." });
   if (existing.invoiceId) return res.status(409).json({ error: "\xC9criture g\xE9n\xE9r\xE9e par une facture : annulez la facture." });
   const row = await prisma.journalEntry.update({
@@ -1117,12 +1145,12 @@ router2.post("/entries/:id/unvalidate", handler(async (req, res) => {
   res.json(serializeEntry(row));
 }));
 router2.post("/entries/:id/cancel", handler(async (req, res) => {
-  if (!canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: "Annulation r\xE9serv\xE9e au Chef comptable." });
-  }
   const id = identifier(req.params.id);
   const existing = id ? await findAccessibleEntry(req, id) : null;
   if (!existing) return res.status(404).json({ error: "\xC9criture introuvable." });
+  if (!canUnvalidate(getAuthUser(req)?.role) && !await ownsDossier(req, existing.clientDossierId)) {
+    return res.status(403).json({ error: "Annulation r\xE9serv\xE9e au propri\xE9taire du dossier." });
+  }
   if (existing.status === "cancelled") return res.status(409).json({ error: "\xC9criture d\xE9j\xE0 annul\xE9e." });
   if (existing.invoiceId) return res.status(409).json({ error: "\xC9criture g\xE9n\xE9r\xE9e par une facture : annulez la facture." });
   const author = await actorName(req);
@@ -1252,15 +1280,9 @@ router5.post("/import-backup", handler(async (req, res) => {
   if (dossiers.length > 500 || entries.length > 2e4) {
     return res.status(400).json({ error: "Sauvegarde trop volumineuse (500 dossiers / 20000 \xE9critures maximum)." });
   }
-  if (user.role === "ADMIN") {
-    await prisma.appNotification.deleteMany();
-    await prisma.journalEntry.deleteMany();
-    await prisma.clientDossier.deleteMany();
-  } else {
-    await prisma.appNotification.deleteMany({ where: { dossier: { ownerId: user.sub } } });
-    await prisma.journalEntry.deleteMany({ where: { clientDossier: { ownerId: user.sub } } });
-    await prisma.clientDossier.deleteMany({ where: { ownerId: user.sub } });
-  }
+  await prisma.appNotification.deleteMany({ where: { dossier: { ownerId: user.sub } } });
+  await prisma.journalEntry.deleteMany({ where: { clientDossier: { ownerId: user.sub } } });
+  await prisma.clientDossier.deleteMany({ where: { ownerId: user.sub } });
   const restoredDossierIds = /* @__PURE__ */ new Set();
   for (const raw of dossiers) {
     const parsed = validateDossierInput(raw);
@@ -1289,7 +1311,7 @@ router5.post("/import-backup", handler(async (req, res) => {
   for (const raw of entries) {
     const dossierId = identifier(raw?.clientDossierId);
     if (!dossierId || !restoredDossierIds.has(dossierId)) continue;
-    const parsed = validateEntryInput(raw, { trusted: canValidate(user.role) });
+    const parsed = validateEntryInput(raw, { trusted: true });
     if (!parsed.ok) continue;
     const e = parsed.data;
     const id = identifier(raw?.id) ?? void 0;
@@ -1616,11 +1638,13 @@ router7.post("/invoices/:id/submit", handler(async (req, res) => {
 }));
 router7.post("/invoices/:id/validate", handler(async (req, res) => {
   const user = getAuthUser(req);
-  if (!canValidate(user.role)) return res.status(403).json({ error: "Validation r\xE9serv\xE9e au DAF et au Chef comptable." });
   const inv = await findAccessibleInvoice(req, identifier(req.params.id));
   if (!inv) return res.status(404).json({ error: "Facture introuvable." });
-  if (inv.status !== "pending_review") return res.status(409).json({ error: "Seule une facture en attente peut \xEAtre valid\xE9e." });
-  if (isOwnWork(inv, user.sub)) {
+  const owner = await ownsDossier(req, inv.clientDossierId);
+  if (!owner && !canValidate(user.role)) return res.status(403).json({ error: "Validation r\xE9serv\xE9e au propri\xE9taire du dossier." });
+  const validatable = owner ? ["draft", "pending_review"] : ["pending_review"];
+  if (!validatable.includes(inv.status)) return res.status(409).json({ error: "Cette facture ne peut plus \xEAtre valid\xE9e." });
+  if (!owner && isOwnWork(inv, user.sub)) {
     return res.status(403).json({ error: "S\xE9paration des t\xE2ches : vous avez saisi ou modifi\xE9 cette facture." });
   }
   const author = await actorName(req);
@@ -1676,8 +1700,8 @@ router7.post("/invoices/:id/cancel", handler(async (req, res) => {
   const inv = await findAccessibleInvoice(req, identifier(req.params.id));
   if (!inv) return res.status(404).json({ error: "Facture introuvable." });
   if (inv.status === "cancelled") return res.status(409).json({ error: "Facture d\xE9j\xE0 annul\xE9e." });
-  if (inv.status === "validated" && !canUnvalidate(getAuthUser(req)?.role)) {
-    return res.status(403).json({ error: "Annulation d'une facture valid\xE9e r\xE9serv\xE9e au Chef comptable." });
+  if (inv.status === "validated" && !canUnvalidate(getAuthUser(req)?.role) && !await ownsDossier(req, inv.clientDossierId)) {
+    return res.status(403).json({ error: "Annulation d'une facture valid\xE9e r\xE9serv\xE9e au propri\xE9taire du dossier." });
   }
   const author = await actorName(req);
   const reason = optionalText((req.body ?? {}).reason, 300) ?? `Annulation de la facture ${inv.number}.`;
@@ -1717,6 +1741,7 @@ router7.post("/invoices/:id/payments", handler(async (req, res) => {
     if (accountError) return res.status(400).json({ error: accountError });
     const label = `R\xE8glement facture ${inv.number} \u2014 ${inv.customerName}`;
     const author = await actorName(req);
+    const owner = await ownsDossier(req, inv.clientDossierId);
     const entry2 = await prisma.journalEntry.create({
       data: {
         date: new Date(date),
@@ -1727,7 +1752,7 @@ router7.post("/invoices/:id/payments", handler(async (req, res) => {
         amount,
         tvaAmount: 0,
         clientDossierId: inv.clientDossierId,
-        status: "pending_review",
+        ...owner ? { status: "validated", validatedById: user.sub, validatedAt: /* @__PURE__ */ new Date() } : { status: "pending_review" },
         confidenceScore: 100,
         rawInput: label,
         inputType: "manual",
@@ -2315,7 +2340,7 @@ ${top}` : ""}`;
   }
   if (/anomalie|verifier|attente|valider|revue|probleme/.test(n)) {
     const r = ctx.review;
-    return `Il y a ${r.pending} \xE9criture(s) en attente de validation et ${r.anomalies} anomalie(s) \xE0 examiner, sur ${r.total} \xE9critures. Votre expert-comptable les trouve dans l'onglet \xAB Journal & Validation \xBB.`;
+    return `Il y a ${r.pending} \xE9criture(s) en attente de validation et ${r.anomalies} anomalie(s) \xE0 examiner, sur ${r.total} \xE9critures. Vous les trouvez dans l'onglet \xAB Journal & Validation \xBB du Mode Avanc\xE9.`;
   }
   return `Voici la situation de ${dossier.name} : tr\xE9sorerie ${F(t.total)}, chiffre d'affaires du mois ${F(ctx.month.revenue)}, charges ${F(ctx.month.expenses)}, r\xE9sultat ${F(ctx.month.result)}. Les clients vous doivent ${F(ctx.receivables.total)} et vous devez ${F(ctx.payables.total)} \xE0 vos fournisseurs. ${ctx.review.pending + ctx.review.anomalies > 0 ? `${ctx.review.pending + ctx.review.anomalies} \xE9criture(s) attendent une v\xE9rification.` : "Toutes vos \xE9critures sont valid\xE9es."}
 Vous pouvez me demander : \xAB combien j'ai en caisse ? \xBB, \xAB qui me doit de l'argent ? \xBB, \xAB puis-je payer mon loyer ? \xBB, \xAB quel est mon score de cr\xE9dit ? \xBB.`;
@@ -3221,12 +3246,12 @@ function summarize(entries) {
   return `J'ai enregistr\xE9 ${entries.length} \xE9critures :
 ${lines.join("\n")}`;
 }
-function reviewNote(entries) {
+function reviewNote(entries, threshold) {
   const anomalies = entries.filter((e) => e.status === "anomaly");
-  const pending = entries.filter((e) => e.status === "pending_review");
+  const pending = entries.filter((e) => e.status === "pending_review" && e.confidenceScore < threshold);
   const notes = [];
   if (anomalies.length) notes.push(`\u26A0\uFE0F ${anomalies[0].detectedAnomaly}`);
-  if (pending.length && !anomalies.length) notes.push(`Je ne suis pas s\xFBr \xE0 100 % (confiance ${pending[0].confidenceScore} %) : votre expert-comptable la v\xE9rifiera.`);
+  if (pending.length && !anomalies.length) notes.push(`Je ne suis pas s\xFBr \xE0 100 % (confiance ${pending[0].confidenceScore} %) : v\xE9rifiez-la dans le journal (Mode Avanc\xE9).`);
   return notes.length ? `
 
 ${notes.join("\n")}` : "";
@@ -3292,7 +3317,7 @@ router9.post("/chat", handler2(async (req, res) => {
     return res.json({
       success: true,
       intent: "operation",
-      reply: `${summarize(entries)}${reviewNote(entries)}${outcome.reply ?? ""}`,
+      reply: `${summarize(entries)}${reviewNote(entries, ctx.dossier.confidenceThreshold)}${outcome.reply ?? ""}`,
       entries,
       review: counts,
       source,
@@ -3549,6 +3574,9 @@ app.use("/api", (req, res, next) => {
   const isAgentQuestion = req.path.startsWith("/agent/");
   if (role === "LECTURE_SEULE" && !isReadMethod && !isAgentQuestion) {
     return res.status(403).json({ error: "Votre profil est en lecture seule : modification impossible." });
+  }
+  if (role === "ADMIN" && !req.path.startsWith("/admin/")) {
+    return res.status(403).json({ error: "Le compte administrateur g\xE8re les utilisateurs depuis /admin uniquement." });
   }
   next();
 });
